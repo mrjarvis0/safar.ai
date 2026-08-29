@@ -1,0 +1,9 @@
+streamlit>=1.36
+requests>=2.31
+python-dotenv>=1.0
+
+# LLM SDK — add ONE once the provider is chosen:
+# groq
+# google-generativeai
+# openai
+# anthropic

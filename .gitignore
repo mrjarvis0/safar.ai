@@ -1,0 +1,22 @@
+# Python
+__pycache__/
+*.py[cod]
+*.egg-info/
+.venv/
+venv/
+env/
+
+# Secrets — NEVER commit real keys
+.env
+.env.local
+.streamlit/secrets.toml
+
+# Caches / logs
+.cache/
+*.log
+
+# OS / IDE
+.DS_Store
+Thumbs.db
+.vscode/
+.idea/
