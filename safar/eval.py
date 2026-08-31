@@ -5,7 +5,15 @@ constraint-satisfaction (no hard violation among shown plans), feasibility,
 grounding, and advisory counts. A regression gate would fail the build if
 `with_3_candidates` or `grounded` drops.
 """
+import sys
+
 from .orchestrator import plan_trip
+
+# Windows consoles default to cp1252 and choke on ₹/— — force UTF-8 (matches demo.py).
+try:
+    sys.stdout.reconfigure(encoding="utf-8")
+except Exception:
+    pass
 
 GOLDEN = [
     {"name": "Japan food+culture ₹2L",
