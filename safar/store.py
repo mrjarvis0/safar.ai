@@ -32,6 +32,9 @@ CREATE TABLE IF NOT EXISTS bookings(
   status TEXT, idempotency_key TEXT, amount_inr REAL, created_at REAL);
 CREATE TABLE IF NOT EXISTS profiles(
   user_id TEXT PRIMARY KEY, weights TEXT, history TEXT, updated_at REAL);
+CREATE TABLE IF NOT EXISTS provenance(
+  id INTEGER PRIMARY KEY AUTOINCREMENT, trip_id TEXT, claim TEXT, source TEXT,
+  retrieved_at TEXT, expires_at TEXT, confidence REAL, created_at REAL);
 """
 
 
@@ -140,4 +143,28 @@ def _snapshot(state) -> dict:
     return {"trip_id": state.trip_id, "status": state.status, "trip": state.trip,
             "constraints": state.constraints, "weights": state.weights,
             "candidates": state.candidates, "errors": state.errors,
-            "warnings": getattr(state, "warnings", [])}
+            "warnings": getattr(state, "warnings", []),
+            "provenance_count": len(getattr(state, "provenance", []) or [])}
+
+
+def save_provenance(trip_id: str, records: list) -> None:
+    """Persist provenance records (§11) to the provenance table."""
+    c = conn()
+    import time as _time
+    for r in records:
+        c.execute("INSERT INTO provenance(trip_id,claim,source,retrieved_at,"
+                  "expires_at,confidence,created_at) VALUES(?,?,?,?,?,?,?)",
+                  (trip_id, r.get("claim"), r.get("source"),
+                   r.get("retrieved_at"), r.get("expires_at"),
+                   r.get("confidence", 0), _time.time()))
+    c.commit()
+
+
+def get_provenance(trip_id: str) -> list:
+    """Retrieve provenance records for a trip."""
+    rows = conn().execute(
+        "SELECT claim,source,retrieved_at,expires_at,confidence "
+        "FROM provenance WHERE trip_id=? ORDER BY id", (trip_id,)).fetchall()
+    return [{"claim": c, "source": s, "retrieved_at": r, "expires_at": e,
+             "confidence": co} for c, s, r, e, co in rows]
+

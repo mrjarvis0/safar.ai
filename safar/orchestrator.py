@@ -6,10 +6,12 @@ Flow (readme.md section 7):
 """
 import uuid
 
-from . import config, memory, store, data_optd
+from . import config, memory, store, data_optd, grounding
 from .llm import llm
 from .state import TripState
-from .agents import flight, hotel, activity, visa, discovery, risk, support
+from .agents import (flight, hotel, activity, visa, discovery, risk, support,
+                     seasonality, connection_risk, fare_rules, route_optimizer,
+                     document, connectivity, sustainability, emergency, profile)
 from .engine import negotiation, validation
 from .gateway import gateway
 
@@ -61,7 +63,13 @@ def plan_trip(user_input: dict) -> TripState:
     except Exception:
         pass
 
-    # 5. validate: hard errors + soft advisories (temporal/geo/weather/visa)
+    # 5. Phase 2+ agents — each wrapped so a failure never breaks the plan
+    _run_phase2_agents(state)
+
+    # 6. provenance tracking (§11)
+    grounding.add_claims_from_grounding(state)
+
+    # 7. validate: hard errors + soft advisories (temporal/geo/weather/visa)
     state.status = "VALIDATE"
     state.errors = validation.validate(state)
 
@@ -86,6 +94,27 @@ def approve(state: TripState, decision: str = "APPROVE", pick: str = "balanced")
     return state
 
 
+def _run_phase2_agents(state: TripState) -> None:
+    """Run Phase 2+ agents. Each is wrapped so a failure never breaks the plan."""
+    _safe_run(state, "seasonality", lambda: seasonality.run(state))
+    _safe_run(state, "connection_risk", lambda: connection_risk.run(state))
+    _safe_run(state, "fare_rules", lambda: fare_rules.run(state))
+    _safe_run(state, "route_opt", lambda: route_optimizer.run(state))
+    _safe_run(state, "document", lambda: document.run(state))
+    _safe_run(state, "connectivity", lambda: connectivity.run(state))
+    _safe_run(state, "sustainability", lambda: sustainability.run(state))
+    _safe_run(state, "emergency", lambda: emergency.run(state))
+    _safe_run(state, "traveler_profile", lambda: profile.run(state))
+
+
+def _safe_run(state: TripState, field: str, fn) -> None:
+    """Run an agent function and store its output in state.<field>."""
+    try:
+        setattr(state, field, fn())
+    except Exception:
+        pass
+
+
 def _observe(state: TripState) -> None:
     """Observability + persistence (§19). Best-effort; never blocks a plan."""
     try:
@@ -93,9 +122,16 @@ def _observe(state: TripState) -> None:
         store.append_event(state.trip_id, "planned",
                            {"candidates": list(state.candidates.keys())})
         conf = (state.candidates.get("balanced") or {}).get("confidence", 0.9)
-        for agent in ("flight", "hotel", "activity", "discovery", "risk", "support"):
+        all_agents = ("flight", "hotel", "activity", "discovery", "risk",
+                      "support", "seasonality", "connection_risk", "fare_rules",
+                      "route_optimizer", "document", "connectivity",
+                      "sustainability", "emergency", "profile")
+        for agent in all_agents:
             store.log_agent_run(state.trip_id, agent, confidence=conf,
                                 sources=["gateway"])
+        # Persist provenance records (§11)
+        if getattr(state, "provenance", None):
+            store.save_provenance(state.trip_id, state.provenance)
     except Exception:
         pass
 
