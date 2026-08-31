@@ -44,7 +44,7 @@ with st.sidebar:
                               list(PRIORITY_W), key=f"pr{i}")
             party.append({"name": f"T{i + 1}", "weights": PRIORITY_W[pr]})
 
-    if st.button("Plan my trip", type="primary", use_container_width=True):
+    if st.button("Plan my trip", type="primary", width="stretch"):
         with st.spinner("Agents → negotiate → ground → validate…"):
             st.session_state.state = plan_trip({
                 "destination": destination, "days": days, "budget_inr": budget,
@@ -159,14 +159,14 @@ with tab_plan:
         st.subheader("Human approval")
         pick = st.radio("Pick a candidate", ["balanced", "saver", "comfort"], horizontal=True)
         a, b, c, d = st.columns(4)
-        if a.button("✅ APPROVE", use_container_width=True):
+        if a.button("✅ APPROVE", width="stretch"):
             approve(state, "APPROVE", pick=pick)
             st.session_state.decision = ("APPROVE", pick)
-        if b.button("✏️ MODIFY", use_container_width=True):
+        if b.button("✏️ MODIFY", width="stretch"):
             st.session_state.decision = ("MODIFY", pick)
-        if c.button("🔁 REPLAN", use_container_width=True):
+        if c.button("🔁 REPLAN", width="stretch"):
             st.session_state.decision = ("REPLAN", pick)
-        if d.button("❌ REJECT", use_container_width=True):
+        if d.button("❌ REJECT", width="stretch"):
             st.session_state.decision = ("REJECT", pick)
 
         dec = st.session_state.get("decision")
@@ -222,7 +222,7 @@ with tab_dash:
         st.info("No trips yet — plan one on the 🗺 Plan tab.")
     else:
         st.markdown("**Recent trips**")
-        st.dataframe(trips, use_container_width=True, hide_index=True)
+        st.dataframe(trips, width="stretch", hide_index=True)
         if state:
             tid = state.trip_id
             s = store.agent_run_summary(tid)
@@ -234,16 +234,16 @@ with tab_dash:
             runs = store.agent_runs(tid)
             if runs:
                 st.markdown("**Agent runs**")
-                st.dataframe(runs, use_container_width=True, hide_index=True)
+                st.dataframe(runs, width="stretch", hide_index=True)
             bks = store.bookings(tid)
             if bks:
                 st.markdown("**Bookings (saga)**")
-                st.dataframe(bks, use_container_width=True, hide_index=True)
+                st.dataframe(bks, width="stretch", hide_index=True)
             evs = store.events(tid)
             if evs:
                 st.markdown("**Event log (event-sourced)**")
                 st.dataframe([{"seq": e["seq"], "type": e["type"]} for e in evs],
-                             use_container_width=True, hide_index=True)
+                             width="stretch", hide_index=True)
 
     st.divider()
     if st.button("Run eval harness (golden trips, §18)"):
@@ -251,5 +251,5 @@ with tab_dash:
         with st.spinner("Running golden trips…"):
             rows, agg = ev.run(verbose=False)
         st.dataframe([{"trip": n, **m} for n, m in rows],
-                     use_container_width=True, hide_index=True)
+                     width="stretch", hide_index=True)
         st.json(agg)
