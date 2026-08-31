@@ -24,3 +24,12 @@ NVIDIA_MODEL = get("NVIDIA_MODEL", "meta/llama-3.3-70b-instruct")
 # --- Optional keyed data APIs (the keyless ones need nothing) ---
 AMADEUS_CLIENT_ID = get("AMADEUS_CLIENT_ID")
 AMADEUS_CLIENT_SECRET = get("AMADEUS_CLIENT_SECRET")
+# Amadeus Self-Service: use the free test host by default; switch to
+# https://api.amadeus.com once you have production keys.
+AMADEUS_BASE_URL = get("AMADEUS_BASE_URL", "https://test.api.amadeus.com")
+ORIGIN_IATA = get("ORIGIN_IATA", "DEL")            # traveler's home airport
+
+# Public transport (GTFS): a static feed .zip URL (per-agency, free). Optional.
+GTFS_FEED_URL = get("GTFS_FEED_URL", "")
+# Google Places (paid): premium POI/hours over OSM. Optional.
+GOOGLE_PLACES_API_KEY = get("GOOGLE_PLACES_API_KEY")

@@ -639,11 +639,17 @@ Agents never call vendor APIs directly. One **gateway** mediates every external 
 
 ```
 Tool Gateway
-├── Flight (search / price / rules)   → Amadeus (primary)  ┐
-├── Hotel (search / availability)     → Booking / Amadeus  ├─ failover between vendors
-├── Activities / Restaurants          → Amadeus / Places   ┘
-├── Maps · Routes · Places            → Google Maps Platform
-├── Weather                           → Google Weather
+├── Places · POI · geography          → OpenStreetMap (Nominatim/Overpass)  ┐ free, keyless
+├── World knowledge graph             → Wikidata (SPARQL)                   ├─ primary
+├── Human travel knowledge            → Wikivoyage (MediaWiki API)          ┘  (grounding)
+├── Flight / Hotel / Activities price → Amadeus (keyed, free self-service)  ┐
+├── Hotel (availability)              → Booking / Amadeus                   ├─ vendor failover
+├── Current POI / hours / ratings     → Google Places (keyed, paid)  ← premium/fallback over OSM ┘
+├── Public transport                  → GTFS + GTFS-RT (per-agency feeds, free)
+├── Maps · Routes                     → Google Maps Platform (keyed)
+├── Weather (forecast)                → Open-Meteo / Google Weather
+├── Historical weather (seasonality)  → Open-Meteo Archive / ERA5 (free)
+├── Tourism statistics                → government open-data portals
 ├── Timezone / FX                     → deterministic tools
 ├── Visa / Travel Docs                → IATA / Timatic-class
 ├── Safety / Advisories               → government feeds
@@ -908,12 +914,42 @@ design. This table is the visible record of every gap found and the fix baked in
 
 ---
 
-## Data sources (reference)
+## Data sources (prioritized)
 
-Flights/hotels/activities: Amadeus Self-Service APIs · accommodation: Booking.com Demand API ·
-maps/routing/places/weather/timezone: Google Maps Platform · travel documents: IATA Travel
-Centre / Timatic-class sources · health: WHO International Travel & Health. All external calls
-go through the Tool Gateway (§16); all factual claims carry provenance + freshness (§11).
+Sources ranked by priority. Free/keyless ones are the primary grounding layer and match the
+"free live APIs" direction — they replace the mock `data/*.json` for geography, POI, knowledge,
+and transport. Keyed sources add live pricing (Amadeus) and premium POI (Google Places).
+
+| Pri | Source | Use | Owning agent(s) | Freshness | Key? |
+| --- | --- | --- | --- | --- | --- |
+| 🔥🔥🔥 | **OpenStreetMap** (Nominatim/Overpass) | places + geography | Map/Spatial, Local Expert, Food, Transport, Route | slow/daily | free, keyless |
+| 🔥🔥🔥 | **Wikidata** (SPARQL) | world knowledge graph (coords, country, links) | Destination, Local Expert, Culture, Seasonality | slow | free, keyless |
+| 🔥🔥🔥 | **Wikivoyage** (MediaWiki API) | human travel knowledge (districts, get-around, stay-safe) | Destination, Experience, Local Expert, Culture | slow | free, keyless |
+| 🔥🔥🔥 | **Amadeus** | live flight/hotel/activity **pricing** | Flight, Hotel, Activity, Fare-Rules | minutes | keyed (free self-service) |
+| 🔥🔥🔥 | **GTFS + GTFS-RT** | public transport schedules + realtime | Transport, Route, On-Trip Copilot | static slow / RT seconds | free (per-agency) |
+| 🔥🔥🔥 | **Google Places** | current POI, hours, ratings | Local Expert, Food, Experience, Map | daily | keyed (**paid**) — premium/fallback over OSM |
+| 🔥🔥 | **Government tourism data** | tourism statistics, seasonality, advisories | Seasonality, Safety, Destination | slow | mostly free (open-data) |
+| 🔥🔥 | **Historical weather** (Open-Meteo Archive / ERA5) | seasonality — *not* forecast | Seasonality, Weather-context, Packing | slow | free, keyless |
+| 🔥🔥 | **Historical prices** | cost prediction | Budget, Flight/Hotel ranking | — | own store (Amadeus snapshots over time) |
+| 🔥🔥 | **User feedback** | personalization | Traveler Profile, Negotiator weights | per-trip | own store (Postgres/Vector) |
+| 🔥 | **Synthetic datasets** | initial bootstrap + eval golden-trips | eval harness, Profile cold-start | one-time | generated |
+
+### The data-role split *(grounding ≠ fine-tuning)*
+
+**"Data to train the AI" ≠ "fine-tune the LLM on every source."** The frontier LLM is **not**
+fine-tuned on travel facts — facts go stale and fine-tuning them invites hallucination (the exact
+failure §11 exists to prevent). Each source is used by role:
+
+- **Grounding / retrieval** (live-fetched via the gateway, cited in provenance §11, never
+  memorized by the model): OSM, Wikidata, Wikivoyage, Amadeus, GTFS, Google Places, government
+  tourism, historical weather. *This is 8 of the 11 — the default.*
+- **Prediction** (a small, classic-ML model — not the LLM): historical prices → cost predictor.
+- **Personalization** (a preference *vector*, not model weights): user feedback → profile (§14).
+- **Train / bootstrap** (the only true "training" bucket, and only for our own small models +
+  eval golden-trips — never the frontier LLM): synthetic datasets.
+
+All external calls go through the Tool Gateway (§16); all factual claims carry provenance +
+freshness (§11).
 
 ---
 

@@ -1,5 +1,5 @@
 {
-  "_comment": "Mock demo data. Owner: adi. Expand with realistic options; used as fallback so the live demo never breaks.",
+  "_comment": "Mock demo data. Owner: adi. lat/lon + outdoor added for itinerary/route/weather validators. Used as fallback so the live demo never breaks.",
   "destination": "Tokyo",
   "flights": [
     { "id": "F1", "airline": "ANA",  "price_inr": 58200, "stops": 0, "depart": "09:40", "arrive": "20:15", "duration_h": 9.5, "refundable": true },
@@ -7,14 +7,14 @@
     { "id": "F3", "airline": "JAL",  "price_inr": 61500, "stops": 0, "depart": "13:10", "arrive": "23:30", "duration_h": 9.3, "refundable": true }
   ],
   "hotels": [
-    { "id": "H1", "name": "Shinjuku Grand", "stars": 4, "price_inr_night": 9500, "area": "Shinjuku", "transit_min": 4, "rating": 4.5 },
-    { "id": "H2", "name": "Asakusa Inn",    "stars": 3, "price_inr_night": 5200, "area": "Asakusa",  "transit_min": 7, "rating": 4.2 },
-    { "id": "H3", "name": "Ginza Suites",   "stars": 5, "price_inr_night": 15800, "area": "Ginza",   "transit_min": 3, "rating": 4.7 }
+    { "id": "H1", "name": "Shinjuku Grand", "stars": 4, "price_inr_night": 9500, "area": "Shinjuku", "transit_min": 4, "rating": 4.5, "lat": 35.6938, "lon": 139.7034 },
+    { "id": "H2", "name": "Asakusa Inn",    "stars": 3, "price_inr_night": 5200, "area": "Asakusa",  "transit_min": 7, "rating": 4.2, "lat": 35.7148, "lon": 139.7967 },
+    { "id": "H3", "name": "Ginza Suites",   "stars": 5, "price_inr_night": 15800, "area": "Ginza",   "transit_min": 3, "rating": 4.7, "lat": 35.6717, "lon": 139.7650 }
   ],
   "activities": [
-    { "id": "A1", "name": "Senso-ji Temple",   "price_inr": 0,    "tags": ["culture"], "hours": "06:00-17:00", "duration_h": 1.5, "area": "Asakusa" },
-    { "id": "A2", "name": "TeamLab Planets",    "price_inr": 2200, "tags": ["art"],     "hours": "10:00-20:00", "duration_h": 2.0, "area": "Toyosu" },
-    { "id": "A3", "name": "Tsukiji Food Tour",  "price_inr": 3500, "tags": ["food"],    "hours": "08:00-13:00", "duration_h": 3.0, "area": "Tsukiji" },
-    { "id": "A4", "name": "Shibuya Crossing",   "price_inr": 0,    "tags": ["city"],    "hours": "24h",         "duration_h": 0.5, "area": "Shibuya" }
+    { "id": "A1", "name": "Senso-ji Temple",   "price_inr": 0,    "tags": ["culture"], "hours": "06:00-17:00", "duration_h": 1.5, "area": "Asakusa", "lat": 35.7148, "lon": 139.7967, "outdoor": true },
+    { "id": "A2", "name": "TeamLab Planets",    "price_inr": 2200, "tags": ["art"],     "hours": "10:00-20:00", "duration_h": 2.0, "area": "Toyosu",  "lat": 35.6499, "lon": 139.7900, "outdoor": false },
+    { "id": "A3", "name": "Tsukiji Food Tour",  "price_inr": 3500, "tags": ["food"],    "hours": "08:00-13:00", "duration_h": 3.0, "area": "Tsukiji", "lat": 35.6654, "lon": 139.7707, "outdoor": true },
+    { "id": "A4", "name": "Shibuya Crossing",   "price_inr": 0,    "tags": ["city"],    "hours": "24h",         "duration_h": 0.5, "area": "Shibuya", "lat": 35.6595, "lon": 139.7005, "outdoor": true }
   ]
 }

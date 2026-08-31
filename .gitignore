@@ -15,6 +15,10 @@ env/
 .cache/
 *.log
 
+# Local SQLite store + generated data (event-sourced runtime state)
+data/safar.db
+data/synthetic_trips.json
+
 # OS / IDE
 .DS_Store
 Thumbs.db

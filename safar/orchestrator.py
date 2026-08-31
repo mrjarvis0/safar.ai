@@ -1,21 +1,149 @@
 """Orchestrator — the loop that ties everything together. Owner: mr.jarvis0.
 
-Flow (team-work.md section 3):
-  intake -> run agents (flight/hotel/activity) -> negotiate -> validate -> approval
+Flow (readme.md section 7):
+  intake -> run agents (flight/hotel/activity) -> negotiate -> validate
+         -> ground -> AWAITING_APPROVAL  ->  approve()
 """
+import uuid
+
+from . import config, memory, store
+from .llm import llm
 from .state import TripState
-# from .agents import flight, hotel, activity
-# from .tools import budget
-# from .engine import negotiation, validation
+from .agents import flight, hotel, activity, visa, discovery, risk, support
+from .engine import negotiation, validation
+from .gateway import gateway
+
+DEFAULT_WEIGHTS = {"cost": 0.9, "comfort": 0.7, "experience": 0.8,
+                   "safety": 0.6, "risk": 0.5}
 
 
 def plan_trip(user_input: dict) -> TripState:
-    state = TripState()
-    # TODO(lead): fill state.trip / constraints / weights from user_input
-    # TODO(lead): state.options = {"flights": flight.run(state),
-    #                              "hotels":  hotel.run(state),
-    #                              "activities": activity.run(state)}
-    # TODO(lead): state.candidates = negotiation.negotiate(state)
-    # TODO(lead): validation.validate(state)
-    # TODO(lead): state.status = "AWAITING_APPROVAL"
+    """Take intake dict -> fully planned TripState awaiting human approval."""
+    state = TripState(trip_id=uuid.uuid4().hex[:8],
+                      user_id=user_input.get("user_id", "demo"), status="DISCOVER")
+
+    state.trip = {
+        "destination": user_input.get("destination", "Tokyo"),
+        "days": int(user_input.get("days", 5)),
+        "interests": user_input.get("interests", ["food", "culture"]),
+        "pace": user_input.get("pace", "relaxed"),
+        "travel_month": int(user_input.get("travel_month", 11)),
+        "home_country": user_input.get("home_country", "India"),
+        "party": user_input.get("party", []),          # [{name, weights}] for group travel
+    }
+    state.constraints = {
+        "hard": {"budget_inr": float(user_input.get("budget_inr", 200000))},
+        "soft": {"hotel_stars_min": int(user_input.get("hotel_stars_min", 3)),
+                 "avoid_early_flights": bool(user_input.get("avoid_early_flights", True))},
+    }
+    state.weights = user_input.get("weights") or dict(DEFAULT_WEIGHTS)
+    memory.apply(state)               # §14: seed weights from the stored profile
+
+    # 1. logistics agents -> priced options
+    state.options = {
+        "flights": flight.run(state),
+        "hotels": hotel.run(state),
+        "activities": activity.run(state),
+    }
+
+    # 2. negotiate -> 3 candidates (each with a day-by-day itinerary)
+    state.status = "NEGOTIATE"
+    state.candidates = negotiation.negotiate(state)
+
+    # 3. ground on live free sources first (seasonality + visa feed the validators)
+    state.grounding = _ground(state)
+
+    # 4. discovery / risk / support teams (Phase 2 breadth; ground on free sources)
+    try:
+        state.discovery = discovery.run(state)
+        state.risk = risk.run(state)
+        state.support = support.run(state)
+    except Exception:
+        pass
+
+    # 5. validate: hard errors + soft advisories (temporal/geo/weather/visa)
+    state.status = "VALIDATE"
+    state.errors = validation.validate(state)
+
+    _add_llm_note(state)
+    _observe(state)                   # §19: persist snapshot + agent runs
+    state.status = "AWAITING_APPROVAL"
     return state
+
+
+def approve(state: TripState, decision: str = "APPROVE", pick: str = "balanced") -> TripState:
+    """Human-in-the-loop gate (§10). Booking is a separate, explicit step (§13)."""
+    state.approval = {"gate": "final", "decision": decision, "pick": pick}
+    if decision == "APPROVE":
+        state.status = "APPROVED"
+        memory.learn(state)                                  # §14 learning loop
+        store.append_event(state.trip_id, "approved", {"pick": pick})
+    elif decision in ("MODIFY", "REPLAN"):
+        state.status = "NEGOTIATE"  # affected sub-graph would re-run
+    else:
+        state.status = "INTAKE"     # REJECT -> restart intake
+    store.save_trip(state)
+    return state
+
+
+def _observe(state: TripState) -> None:
+    """Observability + persistence (§19). Best-effort; never blocks a plan."""
+    try:
+        store.save_trip(state)
+        store.append_event(state.trip_id, "planned",
+                           {"candidates": list(state.candidates.keys())})
+        conf = (state.candidates.get("balanced") or {}).get("confidence", 0.9)
+        for agent in ("flight", "hotel", "activity", "discovery", "risk", "support"):
+            store.log_agent_run(state.trip_id, agent, confidence=conf,
+                                sources=["gateway"])
+    except Exception:
+        pass
+
+
+def _ground(state: TripState) -> dict:
+    """Grounding layer (§11): geocode + seasonality + a Wikivoyage snippet.
+
+    All keyless + wrapped so a network blip never breaks the plan.
+    """
+    dest = state.trip["destination"]
+    out: dict = {}
+    try:
+        geo = gateway.osm_geocode(dest)
+        out["geo"] = geo
+        if geo.get("lat"):
+            out["seasonality"] = gateway.seasonality(
+                geo["lat"], geo["lon"], state.trip["travel_month"])
+    except Exception:
+        pass
+    try:
+        wv = gateway.wikivoyage(dest)
+        out["wikivoyage"] = (wv.get("summary") or "")[:260]
+        out["wikivoyage_url"] = wv.get("url")
+    except Exception:
+        pass
+    # visa (high-stakes §11): resolve destination country via Wikidata, then check
+    country = None
+    try:
+        country = gateway.wikidata_entity(dest).get("country")
+    except Exception:
+        pass
+    out["country"] = country
+    out["visa"] = visa.check(state.trip.get("home_country", "India"), country)
+    return out
+
+
+def _add_llm_note(state: TripState) -> None:
+    """Optional one-line LLM rationale for the Balanced pick (skipped on mock)."""
+    if not (config.LLM_PROVIDER == "nvidia" and config.NVIDIA_API_KEY):
+        return
+    b = state.candidates.get("balanced")
+    if not b:
+        return
+    try:
+        note = llm(f"In ONE short sentence, tell the traveler why this fits their "
+                   f"{state.trip['interests']} trip: {b['flight']}; {b['hotel']}; "
+                   f"total ₹{b['cost_inr']:,.0f}.", max_tokens=80)
+        if note and "MOCK_LLM_RESPONSE" not in note:
+            b["llm_note"] = note.strip()
+    except Exception:
+        pass
