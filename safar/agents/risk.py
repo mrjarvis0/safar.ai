@@ -5,7 +5,7 @@ and Health are HIGH-STAKES (readme §11): static demo guidance that ALWAYS carri
 a "verify with the official source" disclaimer and is never acted on autonomously.
 Visa lives in agents/visa.py.
 """
-from ..gateway import gateway
+from ..gateway import gateway, fourcastnet
 
 _GOV = "Demo guidance — verify with your government travel advisory."
 _WHO = "Demo guidance — verify with WHO International Travel & Health / a clinic."
@@ -41,8 +41,20 @@ def weather(state) -> dict:
             forecast = (f"next 7d {min(tmax):.0f}–{max(tmax):.0f}°C, "
                         f"max rain prob {max(pprob or [0])}%")
     seas = state.grounding.get("seasonality") or {}
+
+    # Optional AI grounding: NVIDIA Earth-2 FourCastNet (self-hosted NIM). Adds no
+    # latency when FOURCASTNET_URL is unset; falls back to Open-Meteo otherwise.
+    fcn = fourcastnet.status()
+    ai_status = ("reachable" if fcn.get("reachable")
+                 else ("configured" if fcn.get("configured") else "not-deployed"))
+    sources = ["open-meteo:forecast", "open-meteo:archive"]
+    if fcn.get("reachable"):
+        sources.append("nvidia:fourcastnet")
+
     return {"forecast_7d": forecast, "seasonality": seas,
-            "sources": ["open-meteo:forecast", "open-meteo:archive"]}
+            "ai_model": {"provider": "nvidia", "model": "fourcastnet",
+                         "status": ai_status, "endpoint": fcn.get("url")},
+            "sources": sources}
 
 
 def safety(state) -> dict:

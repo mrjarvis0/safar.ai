@@ -139,6 +139,9 @@ with tab_plan:
             with t2:
                 st.markdown("**Risk**")
                 st.caption("Weather: " + str(r.get("weather", {}).get("forecast_7d")))
+                _ai = (r.get("weather", {}) or {}).get("ai_model") or {}
+                if _ai:
+                    st.caption(f"AI forecast: NVIDIA {_ai.get('model')} · {_ai.get('status')}")
                 st.caption("Safety: " + str(r.get("safety", {}).get("advisory")))
                 st.caption("Health: " + str(r.get("health", {}).get("guidance")))
             with t3:

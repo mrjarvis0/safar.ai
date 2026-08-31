@@ -7,3 +7,6 @@ python-dotenv>=1.0
 # google-generativeai
 # openai
 # anthropic
+
+# Optional — only needed to parse NVIDIA FourCastNet NIM forecast output (Earth-2):
+# numpy
