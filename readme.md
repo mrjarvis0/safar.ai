@@ -18,6 +18,33 @@ Travel OS = Agents + Tools + Shared State + Constraint Engine
 
 ---
 
+## Implementation status (what actually runs today)
+
+This document is the full design. A large slice of it is **built and verified end-to-end**
+(`python demo.py`, `python demo_copilot.py`, `python -m safar.eval`, `streamlit run app.py`).
+The build runs entirely on **free / open sources**; the parts that stay mocked or substituted
+are called out honestly below — nothing here is faked.
+
+| Area | Status | Notes |
+| --- | --- | --- |
+| Grounding data (OSM, Wikidata, Wikivoyage, Open-Meteo forecast+archive, FX) | ✅ built | free + keyless, live |
+| Logistics + Discovery + Risk + Support + Visa agents | ✅ built | ~15 agents, grounded on the sources above |
+| Negotiation (Pareto candidates + Nash group), validators (temporal/geo/weather/visa/budget), itinerary | ✅ built | see §8, §9 |
+| On-Trip Copilot + replanning, Memory/personalization | ✅ built | §12, §14 |
+| Persistence + observability + event bus | ✅ built | **SQLite + in-process bus** (MVP-right stand-in; see §15) |
+| Eval harness + synthetic generator | ✅ built | §18 |
+| Streamlit UI + observability dashboard | ✅ built | Plan / On-Trip / Dashboard tabs |
+| Flight/hotel **prices** (Amadeus) | ◐ code-ready | needs free Amadeus **test** keys; mock JSON until then (§16) |
+| Google Places, Events API | ◐ optional | Places has a free monthly quota (needs a billing-enabled key); Events needs a keyed feed |
+| Booking saga | ◐ simulated | full saga + compensation + idempotency, but **no real payment** (§13) |
+| Postgres / Redis / Vector DB / Kafka / LangGraph | ⬜ deferred | all free to self-host; SQLite / in-process / sequential Python are the right MVP choice — swap in when scaling |
+| Real payment capture, GDPR/DPDP program | ⬜ deferred | needs money / legal, not a code task |
+
+**One thing is genuinely not "free forever":** unlimited, global, real-time flight/hotel
+*prices*. Amadeus' free test tier is enough to build against; production volume is metered.
+
+---
+
 ## Table of Contents
 
 1. [Overview & Vision](#1-overview--vision)
@@ -567,7 +594,9 @@ Trip live ─► Event bus ─► Detect event ─► Assess impact ─► Gener
 
 ## 13. Booking & Execution (Saga)
 
-*(Designed now, built later — see roadmap. Included because it shapes the architecture.)*
+*(**Built as a simulated saga** — `safar/engine/booking.py`: authorize → book steps → capture,
+with reverse-order compensation and idempotency keys. **No real payment is made and no card
+data is touched** — capturing money stays a human action, integrated later.)*
 
 Multi-step booking (flight + hotel + transfer + activity) is a **distributed transaction**. If
 the flight books but the hotel fails, you must not leave the traveler half-committed.
@@ -627,6 +656,13 @@ after the trip, explicit ratings, update a **preference vector**. Next trip star
 - **Vector DB** — preference embeddings + semantic recall (RAG over past trips/guides).
 - **Event bus** — flight/weather/event notifications drive the Copilot.
 
+> **What's built today:** the MVP ships this as **SQLite** (`safar/store.py` — event-sourced
+> trips, `agent_runs`, bookings, provenance) and an **in-process event bus** (`safar/events.py`).
+> That is the right choice at MVP scale, not a compromise: SQLite is durable and event-sourced,
+> and the call sites don't change. PostgreSQL, Redis, a Vector DB (e.g. `pgvector`), and Kafka
+> are all **free to self-host** and slot in behind the same interfaces when concurrency and
+> multi-worker scale actually demand them.
+
 **Concurrency & consistency.** Many agents write `TripState` concurrently. Writes are
 **event-sourced** (append-only events → derived state) with **optimistic concurrency** (version
 check on write; conflicting writes are re-based, not lost). No agent overwrites another blindly.
@@ -644,7 +680,7 @@ Tool Gateway
 ├── Human travel knowledge            → Wikivoyage (MediaWiki API)          ┘  (grounding)
 ├── Flight / Hotel / Activities price → Amadeus (keyed, free self-service)  ┐
 ├── Hotel (availability)              → Booking / Amadeus                   ├─ vendor failover
-├── Current POI / hours / ratings     → Google Places (keyed, paid)  ← premium/fallback over OSM ┘
+├── Current POI / hours / ratings     → Google Places (keyed; free monthly quota) ← over OSM ┘
 ├── Public transport                  → GTFS + GTFS-RT (per-agency feeds, free)
 ├── Maps · Routes                     → Google Maps Platform (keyed)
 ├── Weather (forecast)                → Open-Meteo / Google Weather
@@ -654,7 +690,7 @@ Tool Gateway
 ├── Visa / Travel Docs                → IATA / Timatic-class
 ├── Safety / Advisories               → government feeds
 ├── Health                            → WHO
-└── Booking / Payment                 → PSP (later phase)
+└── Booking / Payment                 → saga simulated; real PSP capture later
 ```
 
 The gateway adds what raw APIs lack: **rate-limiting**, **retry with backoff**, **circuit
@@ -860,23 +896,30 @@ audit logs; human approval for every irreversible action; payment isolation (§1
 
 ## 20. MVP & Roadmap
 
-27 agents is not a first build. Prove the **core loop** first.
+27 agents is not a first build. Prove the **core loop** first. Status markers below reflect
+the current repo (✅ built & verified · ◐ partial · ⬜ not started).
 
-**MVP (demonstrates the goal end-to-end) — ~6 agents:**
+**✅ MVP (demonstrates the goal end-to-end):**
 `Orchestrator → {Flight, Hotel, Activity} → Budget(tool) → Negotiator → Validator → Human
-Approval.` One destination, single traveler, real APIs via the gateway, `TripState` +
-structured protocol, three Pareto candidates, and the final approval gate with a working
-`MODIFY` loop. *This alone shows task-division + negotiation + conflict-resolution + human
-approval — i.e. the whole goal.*
+Approval.` Single traveler + **group** (Nash), gateway with free live sources (mock priced
+fallback), `TripState` + structured protocol, three Pareto candidates, day-by-day itinerary,
+and the approval gate with `MODIFY`/`REPLAN`. *Shows task-division + negotiation +
+conflict-resolution + human approval — the whole goal.*
 
-**Phase 2 — trust & breadth:** Visa, Safety, Weather, Health with grounding + disclaimers;
-Route Optimizer; the eval harness.
+**✅ Phase 2 — trust & breadth:** Visa, Safety, Weather, Health (grounded + disclaimers);
+Discovery/Support teams; itinerary route-ordering (basic Route Optimizer); eval harness.
+*Remaining:* Fare-Rules, Connection-Risk, Events feed (keyed).
 
-**Phase 3 — lifecycle:** On-Trip Copilot + event bus + replanning; Memory & personalization;
-Document ingestion (booking emails/PDFs).
+**✅ Phase 3 — lifecycle:** On-Trip Copilot + event bus + replanning; Memory & personalization.
+*Remaining:* Document ingestion (booking emails/PDFs), offline/SMS resilience.
 
-**Phase 4 — execution:** Booking saga + payment (auth/capture, compensation); group negotiation;
-connectivity/packing/culture/sustainability; offline/emergency.
+**◐ Phase 4 — execution:** Booking saga + compensation + idempotency + auth/capture is built
+**as a simulation**; group negotiation ✅. *Remaining:* real payment capture (needs a PSP —
+deliberately not faked), connectivity/sustainability/emergency agents.
+
+**Infra note:** the build runs on SQLite + in-process bus + sequential Python by design (§15).
+Postgres/Redis/Vector-DB/Kafka/LangGraph are free to self-host and are a *scale-later*
+decision, not a blocker — don't adopt them before concurrency actually demands it.
 
 ---
 
@@ -927,7 +970,7 @@ and transport. Keyed sources add live pricing (Amadeus) and premium POI (Google 
 | 🔥🔥🔥 | **Wikivoyage** (MediaWiki API) | human travel knowledge (districts, get-around, stay-safe) | Destination, Experience, Local Expert, Culture | slow | free, keyless |
 | 🔥🔥🔥 | **Amadeus** | live flight/hotel/activity **pricing** | Flight, Hotel, Activity, Fare-Rules | minutes | keyed (free self-service) |
 | 🔥🔥🔥 | **GTFS + GTFS-RT** | public transport schedules + realtime | Transport, Route, On-Trip Copilot | static slow / RT seconds | free (per-agency) |
-| 🔥🔥🔥 | **Google Places** | current POI, hours, ratings | Local Expert, Food, Experience, Map | daily | keyed (**paid**) — premium/fallback over OSM |
+| 🔥🔥🔥 | **Google Places** | current POI, hours, ratings | Local Expert, Food, Experience, Map | daily | keyed; **free monthly quota** (India ~70k events), then paid — premium/fallback over OSM |
 | 🔥🔥 | **Government tourism data** | tourism statistics, seasonality, advisories | Seasonality, Safety, Destination | slow | mostly free (open-data) |
 | 🔥🔥 | **Historical weather** (Open-Meteo Archive / ERA5) | seasonality — *not* forecast | Seasonality, Weather-context, Packing | slow | free, keyless |
 | 🔥🔥 | **Historical prices** | cost prediction | Budget, Flight/Hotel ranking | — | own store (Amadeus snapshots over time) |
