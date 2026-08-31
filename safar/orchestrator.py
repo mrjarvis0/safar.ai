@@ -6,7 +6,7 @@ Flow (readme.md section 7):
 """
 import uuid
 
-from . import config, memory, store
+from . import config, memory, store, data_optd
 from .llm import llm
 from .state import TripState
 from .agents import flight, hotel, activity, visa, discovery, risk, support
@@ -121,12 +121,20 @@ def _ground(state: TripState) -> dict:
         out["wikivoyage_url"] = wv.get("url")
     except Exception:
         pass
-    # visa (high-stakes §11): resolve destination country via Wikidata, then check
+    # offline OPTD reference (IATA + timezone + country) — keyless, always available
+    optd = data_optd.resolve_city(dest)
+    if optd:
+        out["optd"] = {"iata": optd.get("iata"), "timezone": optd.get("timezone"),
+                       "country": optd.get("country")}
+
+    # visa (high-stakes §11): resolve destination country via Wikidata, OPTD fallback
     country = None
     try:
         country = gateway.wikidata_entity(dest).get("country")
     except Exception:
         pass
+    if not country and optd:
+        country = optd.get("country")
     out["country"] = country
     out["visa"] = visa.check(state.trip.get("home_country", "India"), country)
     return out

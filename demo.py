@@ -45,6 +45,10 @@ def show(state) -> None:
                   f"{se['rainy_days']} rainy days")
         if g.get("wikivoyage"):
             print(f"  • Wikivoyage: {g['wikivoyage'].strip()[:200]}…")
+        if g.get("optd"):
+            o = g["optd"]
+            print(f"  • OPTD (offline): IATA {o.get('iata')} · {o.get('timezone')} · "
+                  f"{o.get('country')}")
 
     d, r, sup = state.discovery, state.risk, state.support
     if d or r or sup:

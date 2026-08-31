@@ -4,8 +4,9 @@
     {
       "name": "safar",
       "runtimeExecutable": "python",
-      "runtimeArgs": ["-m", "streamlit", "run", "app.py", "--server.headless", "true", "--server.port", "8501", "--browser.gatherUsageStats", "false"],
-      "port": 8501
+      "runtimeArgs": ["-m", "streamlit", "run", "app.py", "--server.headless", "true", "--server.port", "8502", "--browser.gatherUsageStats", "false"],
+      "port": 8502,
+      "autoPort": false
     }
   ]
 }

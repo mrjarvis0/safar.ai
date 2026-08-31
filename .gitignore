@@ -18,6 +18,7 @@ env/
 # Local SQLite store + generated data (event-sourced runtime state)
 data/safar.db
 data/synthetic_trips.json
+data/optd/_raw_por.csv   # 12.6MB raw OPTD dump; only the filtered subset is committed
 
 # OS / IDE
 .DS_Store

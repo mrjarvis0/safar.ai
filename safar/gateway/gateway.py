@@ -18,6 +18,7 @@ import time
 import requests
 
 from .. import config
+from .. import data_optd
 
 _DATA = pathlib.Path(__file__).resolve().parents[2] / "data" / "tokyo.json"
 _CACHE: dict = {}
@@ -342,6 +343,9 @@ def _city_code(city: str) -> str | None:
     key = (city or "").strip().lower()
     if key in _CITY_CODE:
         return _CITY_CODE[key]
+    r = data_optd.resolve_city(city)          # offline OPTD: thousands of cities, no key
+    if r and r.get("iata"):
+        return r["iata"]
     try:
         d = _amadeus_get("/v1/reference-data/locations",
                          {"keyword": city, "subType": "CITY", "page[limit]": 1})
@@ -371,8 +375,9 @@ def _map_flight_offer(o: dict, idx: int) -> dict:
     itin = (o.get("itineraries") or [{}])[0]
     segs = itin.get("segments") or [{}]
     first, last = segs[0], segs[-1]
-    airline = (o.get("validatingAirlineCodes")
-               or [first.get("carrierCode", "")])[0]
+    code = (o.get("validatingAirlineCodes")
+            or [first.get("carrierCode", "")])[0]
+    airline = data_optd.airline_name(code) or code   # "NH" -> "All Nippon Airways"
     return {
         "id": f"AMF{idx + 1}",
         "airline": airline,

@@ -27,7 +27,7 @@ are called out honestly below — nothing here is faked.
 
 | Area | Status | Notes |
 | --- | --- | --- |
-| Grounding data (OSM, Wikidata, Wikivoyage, Open-Meteo forecast+archive, FX) | ✅ built | free + keyless, live |
+| Grounding data (OSM, Wikidata, Wikivoyage, Open-Meteo forecast+archive, FX, OpenTravelData) | ✅ built | free + keyless; OPTD is a bundled offline airports/cities/airlines DB (18k POR) |
 | Logistics + Discovery + Risk + Support + Visa agents | ✅ built | ~15 agents, grounded on the sources above |
 | Negotiation (Pareto candidates + Nash group), validators (temporal/geo/weather/visa/budget), itinerary | ✅ built | see §8, §9 |
 | On-Trip Copilot + replanning, Memory/personalization | ✅ built | §12, §14 |
@@ -970,6 +970,7 @@ and transport. Keyed sources add live pricing (Amadeus) and premium POI (Google 
 | 🔥🔥🔥 | **Wikivoyage** (MediaWiki API) | human travel knowledge (districts, get-around, stay-safe) | Destination, Experience, Local Expert, Culture | slow | free, keyless |
 | 🔥🔥🔥 | **Amadeus** | live flight/hotel/activity **pricing** | Flight, Hotel, Activity, Fare-Rules | minutes | keyed (free self-service) |
 | 🔥🔥🔥 | **GTFS + GTFS-RT** | public transport schedules + realtime | Transport, Route, On-Trip Copilot | static slow / RT seconds | free (per-agency) |
+| 🔥🔥 | **OpenTravelData** (offline CSV) | airports/cities → IATA, airline names, country/timezone | gateway resolver, Flight, grounding | static | **free, keyless** (CC-BY, bundled) |
 | 🔥🔥🔥 | **Google Places** | current POI, hours, ratings | Local Expert, Food, Experience, Map | daily | keyed; **free monthly quota** (India ~70k events), then paid — premium/fallback over OSM |
 | 🔥🔥 | **Government tourism data** | tourism statistics, seasonality, advisories | Seasonality, Safety, Destination | slow | mostly free (open-data) |
 | 🔥🔥 | **Historical weather** (Open-Meteo Archive / ERA5) | seasonality — *not* forecast | Seasonality, Weather-context, Packing | slow | free, keyless |
