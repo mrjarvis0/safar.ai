@@ -296,6 +296,9 @@ def seasonality(lat: float, lon: float, month: int, year: int | None = None) -> 
 # Set AMADEUS_CLIENT_ID / AMADEUS_CLIENT_SECRET in .env to activate. Everything
 # below falls back to mock via get_flights/get_hotels on any failure.
 _AMADEUS = {"token": None, "exp": 0.0}
+# our flight id -> the full raw Amadeus offer (needed to price + book it later).
+# Kept out of TripState so snapshots stay small + JSON-clean; same-session only.
+_OFFER_RAW: dict = {}
 # Common destination -> Amadeus city code (flights + hotels). Unknown cities fall
 # back to the reference-data locations API.
 _CITY_CODE = {"tokyo": "TYO", "kyoto": "OSA", "osaka": "OSA", "paris": "PAR",
@@ -327,6 +330,23 @@ def _amadeus_get(path: str, params: dict) -> dict:
                      timeout=_TIMEOUT)
     r.raise_for_status()
     return r.json()
+
+
+def _amadeus_post(path: str, body: dict) -> dict:
+    r = requests.post(f"{config.AMADEUS_BASE_URL}{path}", json=body,
+                      headers={"Authorization": f"Bearer {_amadeus_token()}",
+                               "Content-Type": "application/json"},
+                      timeout=_TIMEOUT)
+    r.raise_for_status()
+    return r.json()
+
+
+def _amadeus_delete(path: str) -> int:
+    r = requests.delete(f"{config.AMADEUS_BASE_URL}{path}",
+                        headers={"Authorization": f"Bearer {_amadeus_token()}"},
+                        timeout=_TIMEOUT)
+    r.raise_for_status()
+    return r.status_code
 
 
 def _iso_hours(iso: str) -> float:
@@ -378,15 +398,24 @@ def _map_flight_offer(o: dict, idx: int) -> dict:
     code = (o.get("validatingAirlineCodes")
             or [first.get("carrierCode", "")])[0]
     airline = data_optd.airline_name(code) or code   # "NH" -> "All Nippon Airways"
+    # Marketing flight number of the first segment (e.g. "NH838") — used by the
+    # live flight-status monitor (§2b) to look up delays for the chosen flight.
+    op_code = first.get("carrierCode", code)
+    op_num = first.get("number", "")
+    flight_no = f"{op_code}{op_num}" if op_code and op_num else None
+    offer_id = f"AMF{idx + 1}"
+    _OFFER_RAW[offer_id] = o          # stash raw offer so we can price + book it (§13)
     return {
-        "id": f"AMF{idx + 1}",
+        "id": offer_id,
         "airline": airline,
+        "flight_no": flight_no,
         "price_inr": round(price_inr),
         "stops": max(len(segs) - 1, 0),
         "depart": first.get("departure", {}).get("at", "T")[11:16],
         "arrive": last.get("arrival", {}).get("at", "T")[11:16],
         "duration_h": _iso_hours(itin.get("duration", "PT0H")),
         "refundable": bool(o.get("pricingOptions", {}).get("refundableFare", False)),
+        "bookable": True,             # backed by a real Amadeus offer
     }
 
 
@@ -451,6 +480,77 @@ def amadeus_hotels(trip: dict) -> list:
     return out
 
 
+# ---- Amadeus: real flight BOOKING (§13) — price -> order (PNR) -> cancel -------
+# Requires production Amadeus keys (AMADEUS_BASE_URL=https://api.amadeus.com). The
+# free TEST host also exposes these endpoints against synthetic inventory, so the
+# whole path can be exercised without spending money. Booking still needs real
+# traveler details from a human — Safar never fabricates passenger identities.
+def has_amadeus() -> bool:
+    return bool(config.AMADEUS_CLIENT_ID and config.AMADEUS_CLIENT_SECRET)
+
+
+def amadeus_price_flight(offer_id: str) -> dict:
+    """Confirm the live price of a stashed offer (Flight Offers Price API).
+
+    Prices can move between search and booking; always re-price first. Returns
+    {ok, price_inr, currency, offer} or {ok:False, error}.
+    """
+    raw = _OFFER_RAW.get(offer_id)
+    if not raw:
+        return {"ok": False, "error": f"offer {offer_id} not in cache — re-search"}
+    try:
+        d = _amadeus_post("/v1/shopping/flight-offers/pricing",
+                          {"data": {"type": "flight-offers-pricing",
+                                    "flightOffers": [raw]}})
+        priced = (d.get("data", {}).get("flightOffers") or [raw])[0]
+        _OFFER_RAW[offer_id] = priced        # book the re-priced offer, not the stale one
+        price = priced.get("price", {})
+        total = float(price.get("total", 0))
+        cur = price.get("currency", "INR")
+        inr = total if cur == "INR" else convert_currency(total, cur, "INR")
+        return {"ok": True, "price_inr": round(inr), "currency": cur, "offer": priced}
+    except Exception as e:  # noqa: BLE001
+        return {"ok": False, "error": str(e)[:200]}
+
+
+def amadeus_book_flight(offer_id: str, travelers: list[dict],
+                        contact: dict | None = None) -> dict:
+    """Create a real flight order → PNR (Flight Create Orders API).
+
+    `travelers` must be supplied by a human (name, dob, gender, document). Safar
+    does not invent passenger identities. Returns {ok, pnr, order_id} or error.
+    """
+    raw = _OFFER_RAW.get(offer_id)
+    if not raw:
+        return {"ok": False, "error": f"offer {offer_id} not in cache — re-search"}
+    if not travelers:
+        return {"ok": False, "error": "traveler details required (human input) — "
+                                      "Safar never fabricates passenger identities"}
+    body = {"data": {"type": "flight-order", "flightOffers": [raw],
+                     "travelers": travelers}}
+    if contact:
+        body["data"]["contacts"] = [contact]
+    try:
+        d = _amadeus_post("/v1/booking/flight-orders", body).get("data", {})
+        refs = d.get("associatedRecords") or [{}]
+        pnr = refs[0].get("reference")               # the airline PNR / locator
+        return {"ok": True, "pnr": pnr, "order_id": d.get("id"),
+                "queued": bool(pnr)}
+    except Exception as e:  # noqa: BLE001
+        return {"ok": False, "error": str(e)[:200]}
+
+
+def amadeus_cancel_flight(order_id: str) -> dict:
+    """Cancel a flight order (saga compensation / refund path). Best-effort."""
+    if not order_id:
+        return {"ok": False, "error": "no order_id"}
+    try:
+        code = _amadeus_delete(f"/v1/booking/flight-orders/{order_id}")
+        return {"ok": code in (200, 204), "status_code": code}
+    except Exception as e:  # noqa: BLE001
+        return {"ok": False, "error": str(e)[:200]}
+
+
 # ---- GTFS: public transport (priority #5, free per-agency feeds) --------------
 def gtfs_status() -> dict:
     """Report whether a GTFS feed is wired. Set GTFS_FEED_URL in .env to activate."""
@@ -477,5 +577,104 @@ def gtfs_routes(limit: int = 20) -> list:
             rows = list(csv.DictReader(io.TextIOWrapper(f, encoding="utf-8-sig")))
         return [{"route": (row.get("route_short_name") or row.get("route_long_name")),
                  "type": row.get("route_type")} for row in rows[:limit]]
+    except Exception:
+        return []
+
+
+# ---- Live flight status: delays -> On-Trip Copilot re-plan (§2b, keyed free tier)
+# AviationStack primary, AeroDataBox fallback. Returns {} when unconfigured or on
+# error, so safar.monitor can fall back to a deterministic demo status.
+def _delay_between(scheduled: str, revised: str) -> int | None:
+    """Minutes between two ISO timestamps (revised - scheduled). None if unparsable."""
+    try:
+        s = datetime.datetime.fromisoformat(scheduled.replace("Z", "+00:00"))
+        r = datetime.datetime.fromisoformat(revised.replace("Z", "+00:00"))
+        return max(0, round((r - s).total_seconds() / 60))
+    except Exception:
+        return None
+
+
+def _aviationstack_status(flight_no: str) -> dict:
+    if not config.AVIATIONSTACK_API_KEY:
+        return {}
+    d = _get(f"{config.AVIATIONSTACK_BASE_URL}/flights",
+             {"access_key": config.AVIATIONSTACK_API_KEY, "flight_iata": flight_no})
+    row = (d.get("data") or [{}])[0]
+    dep = row.get("departure", {}) or {}
+    delay = dep.get("delay")
+    return {
+        "flight_no": flight_no,
+        "status": row.get("flight_status"),
+        "delay_minutes": int(delay) if delay is not None else 0,
+        "dep_scheduled": dep.get("scheduled"),
+        "dep_estimated": dep.get("estimated"),
+        "source": "aviationstack",
+    }
+
+
+def _aerodatabox_status(flight_no: str, date: str | None) -> dict:
+    if not config.AERODATABOX_API_KEY:
+        return {}
+    path = f"/flights/number/{flight_no}" + (f"/{date}" if date else "")
+    r = requests.get(f"https://{config.AERODATABOX_HOST}{path}",
+                     headers={"X-RapidAPI-Key": config.AERODATABOX_API_KEY,
+                              "X-RapidAPI-Host": config.AERODATABOX_HOST},
+                     timeout=_TIMEOUT)
+    r.raise_for_status()
+    row = (r.json() or [{}])[0]
+    dep = row.get("departure", {}) or {}
+    sched = (dep.get("scheduledTime") or {}).get("utc")
+    revised = (dep.get("revisedTime") or {}).get("utc")
+    delay = _delay_between(sched, revised) if (sched and revised) else 0
+    return {
+        "flight_no": flight_no,
+        "status": row.get("status"),
+        "delay_minutes": delay or 0,
+        "dep_scheduled": sched,
+        "dep_estimated": revised,
+        "source": "aerodatabox",
+    }
+
+
+def flight_status(flight_no: str, date: str | None = None) -> dict:
+    """Live status for an IATA flight number (e.g. 'AI840'). {} if unavailable.
+
+    Tries AviationStack, then AeroDataBox. Both keyed (free tiers); every call is
+    wrapped so a network/quota error degrades to {} rather than crashing.
+    """
+    if not flight_no:
+        return {}
+    for fetch in (lambda: _aviationstack_status(flight_no),
+                  lambda: _aerodatabox_status(flight_no, date)):
+        try:
+            s = fetch()
+            if s:
+                return s
+        except Exception:
+            continue
+    return {}
+
+
+# ---- OSRM routing: multiple road routes + fallback (§2c, FREE + keyless) -------
+def osrm_route(a: tuple[float, float], b: tuple[float, float],
+               profile: str = "driving", alternatives: bool = True) -> list:
+    """Road route(s) between (lat,lon) points a and b via OSRM (no key).
+
+    Returns [{distance_km, duration_min, profile}] ranked primary-first (multiple
+    when `alternatives`), or [] if OSRM has no route / is unreachable — the caller
+    then tries the next profile or a straight-line estimate.
+    """
+    if not (a and b and a[0] is not None and b[0] is not None):
+        return []
+    coords = f"{a[1]},{a[0]};{b[1]},{b[0]}"      # OSRM wants lon,lat
+    try:
+        d = _get(f"{config.OSRM_BASE_URL}/route/v1/{profile}/{coords}",
+                 {"overview": "false", "alternatives": str(alternatives).lower()})
+        if d.get("code") != "Ok":
+            return []
+        return [{"distance_km": round(r.get("distance", 0) / 1000, 1),
+                 "duration_min": round(r.get("duration", 0) / 60),
+                 "profile": profile}
+                for r in d.get("routes", [])]
     except Exception:
         return []

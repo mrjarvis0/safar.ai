@@ -10,3 +10,8 @@ python-dotenv>=1.0
 
 # Optional — only needed to parse NVIDIA FourCastNet NIM forecast output (Earth-2):
 # numpy
+
+# Phase 3 production extras (Postgres/Redis drivers) live in requirements-prod.txt:
+#   pip install -r requirements.txt -r requirements-prod.txt
+# The base app needs none of them — it runs on SQLite + an in-process bus.
+# Payments use raw REST (requests), so no PSP SDK is required.

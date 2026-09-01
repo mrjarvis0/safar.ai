@@ -11,7 +11,8 @@ from .llm import llm
 from .state import TripState
 from .agents import (flight, hotel, activity, visa, discovery, risk, support,
                      seasonality, connection_risk, fare_rules, route_optimizer,
-                     document, connectivity, sustainability, emergency, profile)
+                     document, connectivity, sustainability, emergency, profile,
+                     transport, ground_transport)
 from .engine import negotiation, validation
 from .gateway import gateway
 
@@ -105,6 +106,8 @@ def _run_phase2_agents(state: TripState) -> None:
     _safe_run(state, "sustainability", lambda: sustainability.run(state))
     _safe_run(state, "emergency", lambda: emergency.run(state))
     _safe_run(state, "traveler_profile", lambda: profile.run(state))
+    _safe_run(state, "transport", lambda: transport.run(state))
+    _safe_run(state, "ground", lambda: ground_transport.run(state))   # Phase 3b
 
 
 def _safe_run(state: TripState, field: str, fn) -> None:
@@ -125,7 +128,8 @@ def _observe(state: TripState) -> None:
         all_agents = ("flight", "hotel", "activity", "discovery", "risk",
                       "support", "seasonality", "connection_risk", "fare_rules",
                       "route_optimizer", "document", "connectivity",
-                      "sustainability", "emergency", "profile")
+                      "sustainability", "emergency", "profile", "transport",
+                      "ground_transport")
         for agent in all_agents:
             store.log_agent_run(state.trip_id, agent, confidence=conf,
                                 sources=["gateway"])

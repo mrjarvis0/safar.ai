@@ -2,9 +2,9 @@
   "_comment": "Mock demo data. Owner: adi. lat/lon + outdoor added for itinerary/route/weather validators. Used as fallback so the live demo never breaks.",
   "destination": "Tokyo",
   "flights": [
-    { "id": "F1", "airline": "ANA",  "price_inr": 58200, "stops": 0, "depart": "09:40", "arrive": "20:15", "duration_h": 9.5, "refundable": true },
-    { "id": "F2", "airline": "AirAsia", "price_inr": 41800, "stops": 1, "depart": "06:00", "arrive": "22:40", "duration_h": 13.0, "refundable": false },
-    { "id": "F3", "airline": "JAL",  "price_inr": 61500, "stops": 0, "depart": "13:10", "arrive": "23:30", "duration_h": 9.3, "refundable": true }
+    { "id": "F1", "airline": "ANA",  "flight_no": "NH838", "price_inr": 58200, "stops": 0, "depart": "09:40", "arrive": "20:15", "duration_h": 9.5, "refundable": true },
+    { "id": "F2", "airline": "AirAsia", "flight_no": "D7532", "price_inr": 41800, "stops": 1, "depart": "06:00", "arrive": "22:40", "duration_h": 13.0, "refundable": false },
+    { "id": "F3", "airline": "JAL",  "flight_no": "JL740", "price_inr": 61500, "stops": 0, "depart": "13:10", "arrive": "23:30", "duration_h": 9.3, "refundable": true }
   ],
   "hotels": [
     { "id": "H1", "name": "Shinjuku Grand", "stars": 4, "price_inr_night": 9500, "area": "Shinjuku", "transit_min": 4, "rating": 4.5, "lat": 35.6938, "lon": 139.7034 },

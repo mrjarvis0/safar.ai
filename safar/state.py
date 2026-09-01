@@ -40,3 +40,5 @@ class TripState:
     sustainability: dict[str, Any] = field(default_factory=dict)    # sustainability agent output
     emergency: dict[str, Any] = field(default_factory=dict)     # emergency agent output
     traveler_profile: dict[str, Any] = field(default_factory=dict)  # profile agent output
+    ground: dict[str, Any] = field(default_factory=dict)        # Phase 3b: intercity bus/train
+    transport: dict[str, Any] = field(default_factory=dict)     # §2c: OSRM road routes + fallback

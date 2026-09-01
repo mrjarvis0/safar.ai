@@ -1,0 +1,13 @@
+# Safar — OPTIONAL production extras (Phase 3c). The base app (requirements.txt)
+# runs on SQLite + in-process bus with NONE of these. Install these only when you
+# actually scale out to Postgres/Redis or wire live payments.
+#
+#   pip install -r requirements.txt -r requirements-prod.txt
+
+psycopg[binary]>=3.1      # Postgres backend for safar.store (set DATABASE_URL)
+redis>=5.0                # shared cache / rate-limit (set REDIS_URL) — future gateway backend
+
+# Payment PSPs are called over raw REST (requests) — no SDK required. Uncomment
+# to use the official SDKs instead of the built-in REST adapters:
+# razorpay>=1.4
+# stripe>=9.0

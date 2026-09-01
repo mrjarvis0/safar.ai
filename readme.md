@@ -36,9 +36,12 @@ are called out honestly below — nothing here is faked.
 | Streamlit UI + observability dashboard | ✅ built | Plan / On-Trip / Dashboard tabs |
 | Flight/hotel **prices** (Amadeus) | ◐ code-ready | needs free Amadeus **test** keys; mock JSON until then (§16) |
 | Google Places, Events API | ◐ optional | Places has a free monthly quota (needs a billing-enabled key); Events needs a keyed feed |
-| Booking saga | ◐ simulated | full saga + compensation + idempotency, but **no real payment** (§13) |
-| Postgres / Redis / Vector DB / Kafka / LangGraph | ⬜ deferred | all free to self-host; SQLite / in-process / sequential Python are the right MVP choice — swap in when scaling |
-| Real payment capture, GDPR/DPDP program | ⬜ deferred | needs money / legal, not a code task |
+| Booking saga | ✅ built · ◐ live code-ready | simulated saga is default; a **live mode** books a real flight (Amadeus Create Orders → PNR) + creates a real payment order (§13). Needs your prod keys |
+| Payment PSP (Razorpay / Stripe) | ◐ code-ready | order + authorize + capture + refund adapters (`safar/gateway/payment.py`); **capture/refund are human-confirmed in code** — never autonomous. Blank keys → mock |
+| Bus / train inventory (RedBus / rail) | ◐ code-ready | adapters + ranking agent (`gateway/ground_transport.py`); partner/paid APIs, deterministic mock otherwise |
+| Postgres / Redis | ◐ code-ready | `safar.store` swaps to Postgres on `DATABASE_URL` (same call sites); `docker-compose.yml` ships app + Postgres + Redis. SQLite stays the zero-config default |
+| Vector DB / Kafka / LangGraph | ⬜ deferred | free to self-host; in-process / sequential Python is the right MVP choice — swap in when scaling |
+| Real payment **capture**, GDPR/DPDP program | ⬜ deferred | code is ready to plug in; actually moving money needs merchant KYC + legal, not a code task |
 
 **One thing is genuinely not "free forever":** unlimited, global, real-time flight/hotel
 *prices*. Amadeus' free test tier is enough to build against; production volume is metered.
@@ -594,9 +597,13 @@ Trip live ─► Event bus ─► Detect event ─► Assess impact ─► Gener
 
 ## 13. Booking & Execution (Saga)
 
-*(**Built as a simulated saga** — `safar/engine/booking.py`: authorize → book steps → capture,
-with reverse-order compensation and idempotency keys. **No real payment is made and no card
-data is touched** — capturing money stays a human action, integrated later.)*
+*(`safar/engine/booking.py` runs two modes. **simulate** (default): authorize → book steps →
+capture, with reverse-order compensation and idempotency keys — no external calls. **live**
+(Phase 5, opt-in with keys): books a real flight (Amadeus Create Orders → PNR) and creates a
+real payment order via the PSP gateway, then **stops at `AWAITING_PAYMENT`** and hands checkout
+to a human. **In both modes no card data is touched, and capture/refund are human-confirmed in
+code** — `confirm_payment()`/`refund()` refuse without `human_confirmed=True`. Capturing money
+stays a human action.)*
 
 Multi-step booking (flight + hotel + transfer + activity) is a **distributed transaction**. If
 the flight books but the hotel fails, you must not leave the traveler half-committed.
@@ -690,7 +697,8 @@ Tool Gateway
 ├── Visa / Travel Docs                → IATA / Timatic-class
 ├── Safety / Advisories               → government feeds
 ├── Health                            → WHO
-└── Booking / Payment                 → saga simulated; real PSP capture later
+├── Ground transport (bus / train)    → RedBus-class / rail aggregator (keyed) ─┘  (mock fallback)
+└── Booking / Payment                 → Amadeus Create Orders + Razorpay/Stripe (capture human-confirmed)
 ```
 
 The gateway adds what raw APIs lack: **rate-limiting**, **retry with backoff**, **circuit
@@ -913,13 +921,21 @@ Discovery/Support teams; itinerary route-ordering (basic Route Optimizer); eval 
 **✅ Phase 3 — lifecycle:** On-Trip Copilot + event bus + replanning; Memory & personalization.
 *Remaining:* Document ingestion (booking emails/PDFs), offline/SMS resilience.
 
-**◐ Phase 4 — execution:** Booking saga + compensation + idempotency + auth/capture is built
-**as a simulation**; group negotiation ✅. *Remaining:* real payment capture (needs a PSP —
-deliberately not faked), connectivity/sustainability/emergency agents.
+**◐ Phase 4 — execution:** Booking saga + compensation + idempotency + auth/capture ✅ (simulated
+default). group negotiation ✅. connectivity/sustainability/emergency agents ✅.
+
+**◐ Phase 5 — real transactions + production (code-ready):** a **live booking mode** books a real
+flight (Amadeus Flight Create Orders → PNR) and creates a real payment order via a PSP-agnostic
+gateway (Razorpay/Stripe, `safar/gateway/payment.py`); intercity **bus/train** inventory adapters
+(`gateway/ground_transport.py`) + a ranking agent; a **Postgres** backend behind the same store
+interface (`DATABASE_URL`) and a `docker-compose.yml` (app + Postgres + Redis). See `DEPLOY.md`.
+**By design, capture and refund are human-confirmed in code — Safar never moves money
+autonomously and never touches card data (§13).** *Remaining (not a code task):* merchant KYC +
+Amadeus production contract + ticket-issuance (IATA/consolidator) + a DPDP/GDPR data program.
 
 **Infra note:** the build runs on SQLite + in-process bus + sequential Python by design (§15).
-Postgres/Redis/Vector-DB/Kafka/LangGraph are free to self-host and are a *scale-later*
-decision, not a blocker — don't adopt them before concurrency actually demands it.
+Postgres/Redis are now code-ready (swap in via `DATABASE_URL` / compose); Vector-DB/Kafka/
+LangGraph stay a *scale-later* decision — don't adopt them before concurrency actually demands it.
 
 ---
 

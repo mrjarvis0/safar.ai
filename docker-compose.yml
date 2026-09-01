@@ -1,0 +1,50 @@
+# Safar — full production stack (readme §15, Phase 3c): app + Postgres + Redis.
+#
+#   docker compose up --build         # app on http://localhost:8501
+#
+# The app reads keys from `.env` (see .env.example). Postgres/Redis are wired via
+# DATABASE_URL / REDIS_URL below; drop them and the app falls back to SQLite +
+# in-process bus with no code change. Nothing here captures money — booking stays
+# in simulate mode until you set SAFAR_BOOKING_MODE=live plus PSP keys.
+services:
+  app:
+    build: .
+    ports:
+      - "8501:8501"
+    env_file:
+      - .env
+    environment:
+      DATABASE_URL: postgresql://safar:safar@db:5432/safar
+      REDIS_URL: redis://cache:6379/0
+    depends_on:
+      db:
+        condition: service_healthy
+      cache:
+        condition: service_started
+    restart: unless-stopped
+
+  db:
+    image: postgres:16-alpine
+    environment:
+      POSTGRES_USER: safar
+      POSTGRES_PASSWORD: safar
+      POSTGRES_DB: safar
+    volumes:
+      - pgdata:/var/lib/postgresql/data
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U safar"]
+      interval: 5s
+      timeout: 5s
+      retries: 10
+    restart: unless-stopped
+
+  cache:
+    image: redis:7-alpine
+    command: ["redis-server", "--save", "60", "1"]
+    volumes:
+      - redisdata:/data
+    restart: unless-stopped
+
+volumes:
+  pgdata:
+  redisdata:
