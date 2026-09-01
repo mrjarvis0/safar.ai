@@ -40,3 +40,6 @@ class TripState:
     sustainability: dict[str, Any] = field(default_factory=dict)    # sustainability agent output
     emergency: dict[str, Any] = field(default_factory=dict)     # emergency agent output
     traveler_profile: dict[str, Any] = field(default_factory=dict)  # profile agent output
+    # Phase 1 — "identity" agents
+    intercity: dict[str, Any] = field(default_factory=dict)     # §1a: flight vs train/bus/taxi comparison
+    enroute: dict[str, Any] = field(default_factory=dict)       # §1c: attractions sampled along the road route
