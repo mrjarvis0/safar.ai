@@ -149,6 +149,38 @@ with tab_plan:
                 st.caption("Packing: " + ", ".join(sup.get("packing", {}).get("items", [])[:5]))
                 st.caption("Culture: " + "; ".join(sup.get("culture", {}).get("etiquette", [])[:3]))
 
+        # phase-2 intelligence — 9 specialised agents (§7), each guarded
+        with st.expander("🧠 Phase-2 intelligence · 9 specialised agents"):
+            sea, cr, fr = state.seasonality or {}, state.connection_risk or {}, state.fare_rules or {}
+            ro, doc, con = state.route_opt or {}, state.document or {}, state.connectivity or {}
+            sus, emg, prof = state.sustainability or {}, state.emergency or {}, state.traveler_profile or {}
+            p1, p2, p3 = st.columns(3)
+            with p1:
+                st.markdown("**📅 Seasonality**")
+                st.caption(f"{sea.get('crowd_level', '?')} crowds · {sea.get('crowd_note', '')}")
+                st.markdown("**⏱ Connection risk**")
+                _r = ((cr.get("risks") or [{}])[0] or {}).get("note", "no issues flagged")
+                st.caption(f"{cr.get('flagged', 0)} flagged · {_r}")
+                st.markdown("**🎫 Fare rules**")
+                st.caption(str(fr.get("recommendation", "—")))
+            with p2:
+                st.markdown("**🗺 Route optimiser**")
+                st.caption(f"{ro.get('optimisation', '—')} · {ro.get('total_transit_km', 0)} km")
+                st.markdown("**📄 Documents**")
+                st.caption(f"{doc.get('action_required', 0)} of {doc.get('total', 0)} need action")
+                st.markdown("**📶 Connectivity**")
+                st.caption(str(con.get("recommendation") or (con.get("esim") or {}).get("note", "—")))
+            with p3:
+                st.markdown("**🌱 Sustainability**")
+                _cf = sus.get("carbon_footprint") or {}
+                st.caption(f"{_cf.get('total_kg_co2', '?')} kg CO₂ · {_cf.get('equivalent', '')}")
+                st.markdown("**🆘 Emergency**")
+                _n = emg.get("emergency_numbers") or {}
+                st.caption(f"Police {_n.get('police', '—')} · Amb {_n.get('ambulance', '—')}")
+                st.markdown("**👤 Traveler profile**")
+                st.caption("Cold start — sensible defaults" if prof.get("cold_start")
+                           else f"Learned from {prof.get('history_length', 0)} past trip(s)")
+
         # validation + advisories
         if state.errors:
             st.error("Hard-constraint failures:\n" + "\n".join(f"- {e}" for e in state.errors))
