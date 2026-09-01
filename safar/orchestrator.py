@@ -12,7 +12,7 @@ from .state import TripState
 from .agents import (flight, hotel, activity, visa, discovery, risk, support,
                      seasonality, connection_risk, fare_rules, route_optimizer,
                      document, connectivity, sustainability, emergency, profile,
-                     transport, ground_transport)
+                     transport, ground_transport, intercity, enroute)
 from .engine import negotiation, validation
 from .gateway import gateway
 
@@ -49,6 +49,17 @@ def plan_trip(user_input: dict) -> TripState:
         "activities": activity.run(state),
     }
 
+    # 1b. inter-city mode comparison (§1a): flight vs train vs bus vs taxi, all
+    # estimated from the same distance. Feasible GROUND modes are merged into the
+    # flight pool so negotiation ranks every "how you get there" option together
+    # (§8). Overseas trips yield no ground modes -> flights left untouched.
+    try:
+        state.intercity = intercity.run(state)
+        state.options["flights"] = (state.options["flights"]
+                                    + intercity.negotiation_feed(state.intercity))
+    except Exception:
+        pass
+
     # 2. negotiate -> 3 candidates (each with a day-by-day itinerary)
     state.status = "NEGOTIATE"
     state.candidates = negotiation.negotiate(state)
@@ -56,13 +67,17 @@ def plan_trip(user_input: dict) -> TripState:
     # 3. ground on live free sources first (seasonality + visa feed the validators)
     state.grounding = _ground(state)
 
-    # 4. discovery / risk / support teams (Phase 2 breadth; ground on free sources)
+    # 4. discovery / risk / support teams (Phase 2 breadth; ground on free sources).
+    # Risk runs first so the weather-aware food pick (§1b) can read the live forecast.
     try:
-        state.discovery = discovery.run(state)
         state.risk = risk.run(state)
+        state.discovery = discovery.run(state)
         state.support = support.run(state)
     except Exception:
         pass
+
+    # 4b. enroute discovery (§1c): attractions sampled along the road route.
+    _safe_run(state, "enroute", lambda: enroute.run(state))
 
     # 5. Phase 2+ agents — each wrapped so a failure never breaks the plan
     _run_phase2_agents(state)
@@ -129,7 +144,7 @@ def _observe(state: TripState) -> None:
                       "support", "seasonality", "connection_risk", "fare_rules",
                       "route_optimizer", "document", "connectivity",
                       "sustainability", "emergency", "profile", "transport",
-                      "ground_transport")
+                      "ground_transport", "intercity", "enroute")
         for agent in all_agents:
             store.log_agent_run(state.trip_id, agent, confidence=conf,
                                 sources=["gateway"])

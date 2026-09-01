@@ -33,13 +33,18 @@ def _country(state):
 def weather(state) -> dict:
     geo = gateway.osm_geocode(state.trip["destination"])
     forecast = "unavailable"
+    temp_max_c = temp_min_c = rain_prob_max = None      # structured — feeds §1b food rule
     if geo.get("lat"):
         d = gateway.get_weather(geo["lat"], geo["lon"]).get("daily", {})
         tmax = d.get("temperature_2m_max") or []
+        tmin = d.get("temperature_2m_min") or []
         pprob = d.get("precipitation_probability_max") or []
         if tmax:
+            temp_max_c = round(max(tmax))
+            temp_min_c = round(min(tmin)) if tmin else None
+            rain_prob_max = max(pprob) if pprob else None
             forecast = (f"next 7d {min(tmax):.0f}–{max(tmax):.0f}°C, "
-                        f"max rain prob {max(pprob or [0])}%")
+                        f"max rain prob {rain_prob_max or 0}%")
     seas = state.grounding.get("seasonality") or {}
 
     # Optional AI grounding: NVIDIA Earth-2 FourCastNet (self-hosted NIM). Adds no
@@ -51,7 +56,10 @@ def weather(state) -> dict:
     if fcn.get("reachable"):
         sources.append("nvidia:fourcastnet")
 
-    return {"forecast_7d": forecast, "seasonality": seas,
+    return {"forecast_7d": forecast,
+            "temp_max_c": temp_max_c, "temp_min_c": temp_min_c,
+            "rain_prob_max": rain_prob_max,
+            "seasonality": seas,
             "ai_model": {"provider": "nvidia", "model": "fourcastnet",
                          "status": ai_status, "endpoint": fcn.get("url")},
             "sources": sources}

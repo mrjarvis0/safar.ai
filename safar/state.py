@@ -42,3 +42,6 @@ class TripState:
     traveler_profile: dict[str, Any] = field(default_factory=dict)  # profile agent output
     ground: dict[str, Any] = field(default_factory=dict)        # Phase 3b: intercity bus/train
     transport: dict[str, Any] = field(default_factory=dict)     # §2c: OSRM road routes + fallback
+    # Phase 1 — "identity" agents
+    intercity: dict[str, Any] = field(default_factory=dict)     # §1a: flight vs train/bus/taxi comparison
+    enroute: dict[str, Any] = field(default_factory=dict)       # §1c: attractions sampled along the road route

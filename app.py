@@ -164,6 +164,36 @@ with tab_plan:
                 for c, (who, sat) in zip(gc, grp["per_person"].items()):
                     c.metric(who, sat)
 
+        # getting there — multi-modal comparison (§1a)
+        ic = state.intercity or {}
+        if ic.get("modes"):
+            st.subheader("Getting there · ✈️ Flight vs 🚆 Train vs 🚌 Bus vs 🚕 Taxi")
+            rec = ic.get("recommended")
+            for col, m in zip(st.columns(len(ic["modes"])), ic["modes"]):
+                with col:
+                    star = " ⭐" if m["mode"] == rec else ""
+                    st.markdown(f"**{m['icon']} {m['label']}{star}**")
+                    if m["feasible"]:
+                        st.metric("Fare (est.)", f"₹{m['fare_inr']:,}")
+                        st.caption(f"{m['duration_h']}h · {m['depart']}→{m['arrive']}")
+                        st.caption(f"comfort {int(m['comfort'] * 100)}%")
+                    else:
+                        st.caption("— not viable at this distance —")
+            st.caption("Estimates from distance (OSRM road + haversine air), not live "
+                       f"fares. {ic.get('note', '')}")
+
+        # enroute — stops along the road route (§1c)
+        en = state.enroute or {}
+        if en.get("status") == "ok" and en.get("stops"):
+            with st.expander(f"🧭 Enroute · {len(en['stops'])} stop(s) along the "
+                             f"~{en['distance_km']:,.0f} km drive"):
+                for s in en["stops"]:
+                    icon = "🍽️" if s.get("kind") == "food" else "🏛️"
+                    st.caption(f"{icon} near **{s['near']}** — " + ", ".join(s["pois"]))
+                st.caption("Source: free OSRM route line + OpenStreetMap attractions.")
+        elif ic.get("modes") and en.get("note"):
+            st.caption(f"🧭 Enroute: {en['note']}")
+
         # teams
         with st.expander("🔎 Discovery / Risk / Support teams"):
             d, r, sup = state.discovery, state.risk, state.support
@@ -174,6 +204,9 @@ with tab_plan:
                     d.get("local_expert", {}).get("neighbourhood_picks", [])[:4]))
                 st.caption("Food: " + ", ".join(
                     d.get("food", {}).get("food_spots", [])[:4]))
+                wp = d.get("food", {}).get("weather_pick") or {}
+                if wp:
+                    st.caption(f"🍲 Weather pick — {wp.get('theme')}: {wp.get('reason')}")
             with t2:
                 st.markdown("**Risk**")
                 st.caption("Weather: " + str(r.get("weather", {}).get("forecast_7d")))

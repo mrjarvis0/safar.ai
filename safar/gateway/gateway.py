@@ -199,6 +199,39 @@ def osm_pois(lat: float, lon: float, kind: str = "attraction",
     return out[:limit]
 
 
+# ---- OSRM: free road routing (route line + distance/time, keyless) -----------
+def osrm_route_line(origin: tuple[float, float], dest: tuple[float, float]) -> dict:
+    """Driving route between two (lat, lon) points via the free OSRM demo server.
+
+    Returns {distance_km, duration_h, geometry:[[lat,lon],...]}; the geometry is
+    the actual road polyline (used by the Enroute agent to sample stops along the
+    way). Returns {} when there is no overland route (e.g. across an ocean) or the
+    service is unreachable — callers read {} as "not reachable by road" and fall
+    back. No key required. Powers the inter-city mode comparison + enroute discovery.
+    """
+    (alat, alon), (blat, blon) = origin, dest
+    if None in (alat, alon, blat, blon):
+        return {}
+    url = (f"https://router.project-osrm.org/route/v1/driving/"
+           f"{alon},{alat};{blon},{blat}")                       # OSRM wants lon,lat
+    try:
+        d = _get(url, {"overview": "full", "geometries": "geojson"})
+    except Exception:
+        return {}
+    if d.get("code") != "Ok":
+        return {}
+    routes = d.get("routes") or []
+    if not routes:
+        return {}
+    r = routes[0]
+    coords = (r.get("geometry") or {}).get("coordinates") or []  # GeoJSON [lon,lat]
+    return {
+        "distance_km": round(r.get("distance", 0) / 1000, 1),
+        "duration_h": round(r.get("duration", 0) / 3600, 2),
+        "geometry": [[c[1], c[0]] for c in coords if len(c) >= 2],   # -> [lat,lon]
+    }
+
+
 # ---- Wikidata: world knowledge graph (priority #2, free/keyless) -------------
 def wikidata_entity(name: str) -> dict:
     """Name -> {qid, label, description, lat, lon, country}. Wikidata (no key).
