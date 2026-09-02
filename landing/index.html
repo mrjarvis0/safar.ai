@@ -1,0 +1,499 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover" />
+<title>Safar.ai — Multi-Agent Travel Operating System</title>
+<meta name="description" content="Safar.ai — specialised AI agents find flights, weigh hotels, watch visas and weather, then negotiate one plan you approve." />
+<link rel="icon" href="data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 24 24' fill='white'%3E%3Ccircle cx='6' cy='18' r='2'/%3E%3Ccircle cx='18' cy='6' r='2'/%3E%3Crect x='10.8' y='4' width='2.4' height='16' rx='1.2' transform='rotate(45 12 12)'/%3E%3C/svg%3E" />
+<link rel="preconnect" href="https://fonts.googleapis.com" />
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
+<link href="https://fonts.googleapis.com/css2?family=Inter:ital,opsz,wght@0,14..32,100..900&family=Instrument+Serif:ital@1&display=swap" rel="stylesheet" />
+<style>
+/* force black immediately — the page can never flash white */
+html, body { background: #000000 !important; color: #ffffff; }
+
+:root{
+  --bg:#000000; --text:#ffffff; --muted:#9a9a9a; --stat:#d8d8d8;
+  --border:rgba(255,255,255,.16); --border-soft:rgba(255,255,255,.12);
+
+  /* Safar accent palette — shared with the Streamlit app */
+  --a1:#7c5cff; --a2:#22d3ee; --a3:#34d399;
+
+  --logo:15.5px; --logo-mark:22px; --nav:14px; --nav-h:40px;
+  --btn:13.5px; --btn-h:40px; --hero-btn-h:42px;
+  --h1:48px; --lede:15.5px; --badge:12.5px; --stat-size:13.5px;
+  --header-y:22px; --header-x:40px; --stats-x:72px; --stats-y:36px;
+  --hero-gap:85px; --copy-max:860px; --lede-max:470px;
+}
+
+*,*::before,*::after{box-sizing:border-box; margin:0; padding:0;}
+html{scroll-behavior:smooth;}
+html, body { background:#000000; background:var(--bg,#000000); color:#ffffff; color:var(--text,#ffffff); }
+body{
+  font-family:"Inter",system-ui,-apple-system,BlinkMacSystemFont,"Segoe UI",sans-serif;
+  -webkit-font-smoothing:antialiased; -moz-osx-font-smoothing:grayscale;
+  text-rendering:optimizeLegibility; overflow-x:hidden; position:relative;
+}
+a{color:inherit; text-decoration:none;}
+button{font-family:inherit;}
+
+/* ---- layer 4: grain ---- */
+.grain{
+  position:fixed; inset:0; z-index:100; pointer-events:none; opacity:.05;
+  mix-blend-mode:soft-light;
+  background-image:url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='140' height='140'%3E%3Cfilter id='n'%3E%3CfeTurbulence type='fractalNoise' baseFrequency='0.9' numOctaves='2' stitchTiles='stitch'/%3E%3C/filter%3E%3Crect width='100%25' height='100%25' filter='url(%23n)'/%3E%3C/svg%3E");
+}
+
+/* ---- layer 2: hero motion background (pure-CSS aurora on black) ---- */
+.hero-photo{
+  position:fixed; inset:0; z-index:0; background:#000; overflow:hidden;
+  opacity:1; animation:photoIn 1.6s ease both;
+}
+.hero-photo::before{
+  content:""; position:absolute; inset:-25%;
+  background:
+    radial-gradient(38% 42% at 22% 28%, rgba(124,92,255,.22), transparent 60%),
+    radial-gradient(34% 38% at 80% 22%, rgba(34,211,238,.16), transparent 62%),
+    radial-gradient(46% 46% at 62% 88%, rgba(52,211,153,.12), transparent 62%),
+    radial-gradient(30% 30% at 8% 82%, rgba(124,92,255,.12), transparent 60%);
+  filter:blur(34px); animation:aurora 20s ease-in-out infinite alternate;
+}
+.hero-photo::after{ /* scrim — keeps the page black-dominant + text legible */
+  content:""; position:absolute; inset:0;
+  background:
+    radial-gradient(120% 95% at 50% -8%, transparent 38%, rgba(0,0,0,.5) 100%),
+    linear-gradient(180deg, rgba(0,0,0,.28) 0%, rgba(0,0,0,.62) 62%, rgba(0,0,0,.82) 100%);
+}
+.hero-photo.is-in{animation:none; opacity:1;}
+@keyframes photoIn{from{opacity:0;} to{opacity:1;}}
+@keyframes aurora{
+  0%{transform:translate3d(-3%,-2%,0) scale(1.05); }
+  100%{transform:translate3d(3%,2%,0) scale(1.16); }
+}
+
+/* ---- layer 3: page grid ---- */
+.page{
+  position:relative; z-index:1; display:grid;
+  grid-template-rows:auto 1fr auto; min-height:100vh; min-height:100dvh;
+}
+
+/* ==================== header ==================== */
+.header{
+  display:grid; grid-template-columns:1fr auto 1fr; align-items:center;
+  padding:var(--header-y) var(--header-x) 10px; position:relative; z-index:50;
+}
+.logo{
+  display:inline-flex; align-items:center; gap:9px; justify-self:start;
+  font-size:var(--logo); font-weight:600; letter-spacing:-.03em; color:#fff;
+}
+.logo svg{width:var(--logo-mark); height:var(--logo-mark); flex:none;}
+.logo-suffix{font-weight:400; color:#cfcfcf;}
+
+nav#site-nav{display:flex; align-items:center; gap:8px; justify-self:center;}
+.nav-link{
+  position:relative; overflow:hidden; display:inline-flex; align-items:center;
+  height:var(--nav-h); padding:0 18px; border-radius:7px; white-space:nowrap;
+  border:1px solid rgba(198,198,198,.55);
+  background:linear-gradient(105deg,#050505 0%,#2a2a2a 48%,#4a4a4a 100%);
+  color:#f3f3f3; font-size:var(--nav); font-weight:400; letter-spacing:-.01em;
+  transition:background .35s ease, border-color .35s ease, box-shadow .35s ease;
+}
+.nav-link::before{
+  content:""; position:absolute; inset:0;
+  background:linear-gradient(115deg, transparent 30%, rgba(255,255,255,.16) 50%, transparent 70%);
+  transform:translateX(-120%); transition:transform .6s ease;
+}
+.nav-link:hover{
+  border-color:rgba(235,235,235,.9);
+  background:linear-gradient(105deg,#111 0%,#3a3a3a 45%,#6a6a6a 100%);
+  box-shadow:0 0 18px rgba(200,210,230,.18);
+}
+.nav-link:hover::before{transform:translateX(120%);}
+
+.header-right{display:inline-flex; align-items:center; gap:10px; justify-self:end;}
+
+/* burger */
+.burger{
+  display:none; place-items:center; width:42px; height:42px; border-radius:6px;
+  border:1px solid var(--border); background:rgba(8,8,8,.55); z-index:60;
+  cursor:pointer; transition:border-color .25s ease, background .25s ease;
+}
+.burger:hover{border-color:rgba(255,255,255,.32); background:rgba(255,255,255,.05);}
+.burger .bars{display:grid; gap:5px;}
+.burger .bars span{display:block; width:16px; height:1.5px; border-radius:1px; background:#fff;
+  transition:transform .25s ease, opacity .2s ease;}
+body.menu-open .burger .bars span:nth-child(1){transform:translateY(6.5px) rotate(45deg);}
+body.menu-open .burger .bars span:nth-child(2){opacity:0;}
+body.menu-open .burger .bars span:nth-child(3){transform:translateY(-6.5px) rotate(-45deg);}
+
+/* ==================== buttons (liquid glass) ==================== */
+.btn{
+  position:relative; isolation:isolate; overflow:hidden;
+  display:inline-flex; align-items:center; justify-content:center;
+  height:var(--btn-h); padding:0 16px; border-radius:6px;
+  font-size:var(--btn); font-weight:500; letter-spacing:-.02em; line-height:1;
+  white-space:nowrap; cursor:pointer;
+  transition:background .35s, border-color .35s, box-shadow .35s, color .35s, filter .35s;
+}
+.btn::after{
+  content:""; position:absolute; inset:0; z-index:2;
+  background:linear-gradient(115deg, transparent 20%, rgba(255,255,255,.45) 48%, transparent 76%);
+  transform:translateX(-130%); transition:transform .65s ease;
+}
+.btn:hover::after{transform:translateX(130%);}
+
+.btn-solid{
+  background:linear-gradient(180deg,#ffffff 0%,#e7e7e7 48%,#cfcfcf 100%);
+  color:#111; border:1px solid #fff; box-shadow:inset 0 1px 0 rgba(255,255,255,.95);
+}
+.btn-solid:hover{
+  background:linear-gradient(180deg,#fff 0%,#f3f6ff 42%,#d5def2 100%);
+  border-color:#f2f6ff;
+  box-shadow:inset 0 1px 0 #fff, 0 0 22px rgba(186,208,255,.35), 0 8px 18px rgba(255,255,255,.12);
+}
+.btn-ghost{
+  background:linear-gradient(135deg, rgba(255,255,255,.1), rgba(0,0,0,.45) 50%, rgba(160,175,200,.08));
+  color:#fff; border:1px solid rgba(198,198,198,.45); box-shadow:inset 0 1px 0 rgba(255,255,255,.12);
+}
+.btn-ghost:hover{
+  background:linear-gradient(135deg, rgba(210,225,255,.18), rgba(0,0,0,.35) 48%, rgba(180,195,220,.16));
+  border-color:rgba(220,230,255,.75);
+  box-shadow:inset 0 1px 0 rgba(255,255,255,.22), 0 0 20px rgba(170,200,255,.22);
+}
+
+/* hero-scale buttons */
+.hero-actions .btn{height:var(--hero-btn-h); padding:0 18px;}
+.hero-actions .btn-solid:hover{
+  box-shadow:inset 0 1px 0 #fff, 0 0 26px rgba(186,208,255,.4), 0 8px 18px rgba(255,255,255,.14);
+}
+.hero-actions .btn-ghost{
+  background:linear-gradient(135deg, rgba(255,255,255,.12), rgba(0,0,0,.5) 46%, rgba(150,170,200,.1));
+  border:1px solid rgba(198,198,198,.55);
+  backdrop-filter:blur(16px); -webkit-backdrop-filter:blur(16px);
+}
+.hero-actions .btn-ghost:hover{
+  border-color:rgba(220,230,255,.8); box-shadow:inset 0 1px 0 rgba(255,255,255,.22), 0 0 24px rgba(170,200,255,.28);
+}
+
+/* ==================== hero ==================== */
+.hero{
+  display:flex; align-items:flex-end; justify-content:center;
+  padding:8px 24px var(--hero-gap); min-height:0;
+}
+.hero-copy{
+  position:relative; z-index:1; display:flex; flex-direction:column; align-items:center;
+  text-align:center; max-width:var(--copy-max); width:100%;
+}
+.badge{
+  display:inline-flex; align-items:center; gap:8px; margin-bottom:22px;
+  padding:9px 15px; border:0; border-radius:5px;
+  background:linear-gradient(90deg,#7d7d7d 0%,#2a2a2a 52%,#0a0a0a 100%);
+  color:#f2f2f2; font-size:var(--badge); font-weight:400; letter-spacing:-.01em;
+}
+.badge-star{width:18px; height:20px; flex:none; filter:drop-shadow(0 0 3px rgba(255,255,255,.45));}
+
+.hero h1{
+  display:flex; flex-direction:column; align-items:center;
+  font-weight:500; letter-spacing:-.045em; line-height:1.12; color:#fff; font-size:var(--h1);
+}
+.headline-line{display:block; overflow:hidden; padding:.06em .15em .14em;}
+.hero h1 em{
+  font-family:"Instrument Serif","Times New Roman",Times,serif;
+  font-style:italic; font-weight:400; font-size:1.08em; letter-spacing:-.03em; color:#9a9a9a;
+}
+.lede{
+  max-width:var(--lede-max); margin-top:18px; color:#9a9a9a;
+  font-size:var(--lede); font-weight:400; line-height:1.55; letter-spacing:-.015em;
+}
+.hero-actions{display:flex; flex-wrap:wrap; justify-content:center; gap:10px; margin-top:26px;}
+
+/* ==================== stats footer ==================== */
+.stats{
+  display:flex; align-items:center; justify-content:space-between; gap:24px;
+  padding:0 var(--stats-x) var(--stats-y);
+  padding-bottom:max(var(--stats-y), env(safe-area-inset-bottom)); color:#d8d8d8;
+}
+.stat{
+  display:inline-flex; align-items:center; gap:14px; font-size:var(--stat-size);
+  letter-spacing:-.015em; white-space:nowrap;
+}
+.stat svg{width:20px; height:20px; flex:none; color:#e8e8e8;}
+.stat .stat-icon-wide{width:38px; height:21px;}
+
+/* ==================== full-screen mobile menu ==================== */
+.menu-backdrop{
+  display:none; position:fixed; inset:0; z-index:40; background:rgba(8,8,8,.42);
+  opacity:0; visibility:hidden; transition:opacity .28s ease, visibility .28s ease, backdrop-filter .28s ease;
+}
+body.menu-open .menu-backdrop{opacity:1; visibility:visible; backdrop-filter:blur(24px); -webkit-backdrop-filter:blur(24px);}
+
+/* ==================== entrance motion ==================== */
+.appear{
+  opacity:1; animation-duration:1.05s; animation-fill-mode:both;
+  animation-timing-function:cubic-bezier(.16,1,.3,1); animation-delay:var(--d,.08s);
+}
+.appear--scale{animation-name:in-scale;}
+.appear--soft{animation-name:in-soft;}
+.appear--pop{animation-name:in-pop;}
+.appear--mask{animation-name:in-mask;}
+.appear--btn{animation-name:in-btn;}
+.appear--side{animation-name:in-side;}
+.appear--stat{animation-name:in-stat;}
+.hero .lede.appear{animation-duration:1.25s;}
+.appear.is-in, .hero-photo.is-in{animation:none; opacity:1; transform:none; clip-path:none; filter:none;}
+
+@keyframes in-scale{from{opacity:0; transform:scale(.84);} to{opacity:1; transform:scale(1);}}
+@keyframes in-soft{from{opacity:0; transform:translateY(14px);} to{opacity:1; transform:none;}}
+@keyframes in-mask{from{opacity:0; transform:translateY(40%);} to{opacity:1; transform:none;}}
+@keyframes in-pop{0%{opacity:0; transform:scale(.9);} 70%{opacity:1; transform:scale(1.03);} 100%{opacity:1; transform:scale(1);}}
+@keyframes in-btn{from{opacity:0; transform:translateY(18px) scale(.94);} to{opacity:1; transform:none;}}
+@keyframes in-side{from{opacity:0; transform:translateX(22px);} to{opacity:1; transform:none;}}
+@keyframes in-stat{from{opacity:0; transform:translateY(20px);} to{opacity:1; transform:none;}}
+
+.badge-star{animation:in-star .9s cubic-bezier(.16,1,.3,1) .28s both;}
+@keyframes in-star{0%{opacity:0; transform:scale(.2) rotate(-50deg);} 65%{opacity:1; transform:scale(1.2) rotate(8deg);} 100%{opacity:1; transform:scale(1) rotate(0);}}
+.hero h1 em{animation:in-em 1.2s cubic-bezier(.16,1,.3,1) .72s both;}
+@keyframes in-em{from{opacity:.35; filter:blur(4px);} to{opacity:1; filter:none;}}
+
+@media (prefers-reduced-motion: reduce){
+  *,*::before,*::after{transition:none !important; animation:none !important;}
+  .appear,.hero-photo,.hero h1 em,.badge-star{opacity:1; transform:none; clip-path:none; filter:none;}
+}
+
+/* ==================== responsive ==================== */
+@media (min-width:1600px){
+  :root{--logo:17px;--logo-mark:24px;--nav:15px;--nav-h:44px;--btn:15px;--btn-h:44px;--hero-btn-h:48px;
+    --h1:64px;--lede:18px;--badge:13.5px;--stat-size:15px;--header-y:28px;--header-x:64px;--stats-x:96px;--stats-y:44px;
+    --copy-max:980px;--lede-max:540px;}
+  .nav-link{padding:0 20px;}
+  .badge{margin-bottom:26px;} .lede{margin-top:22px;} .hero-actions{margin-top:30px; gap:12px;}
+  .stat svg{width:22px; height:22px;} .stat .stat-icon-wide{width:45px; height:24px;}
+}
+@media (min-width:1920px){
+  :root{--logo:18px;--logo-mark:26px;--nav:16px;--nav-h:48px;--btn:16px;--btn-h:48px;--hero-btn-h:52px;
+    --h1:76px;--lede:20px;--badge:14.5px;--stat-size:16px;--header-y:32px;--header-x:80px;--stats-x:120px;--stats-y:52px;
+    --copy-max:1120px;--lede-max:620px;}
+  nav#site-nav{gap:10px;} .nav-link{padding:0 22px;} .btn{padding:0 22px;} .badge{padding:10px 15px;}
+  .stat .stat-icon-wide{width:48px; height:26px;}
+}
+@media (min-width:2560px){
+  :root{--h1:88px;--lede:22px;--header-x:120px;--stats-x:160px;--copy-max:1280px;--lede-max:680px;}
+}
+@media (min-width:1280px) and (max-width:1599px){
+  :root{--h1:54px;--lede:16px;--header-x:48px;--stats-x:80px;--copy-max:900px;}
+}
+@media (min-width:901px) and (max-width:1279px){
+  :root{--logo:15px;--nav:13px;--nav-h:36px;--btn:13px;--btn-h:38px;--hero-btn-h:40px;--h1:42px;--lede:15px;
+    --badge:12px;--stat-size:12.5px;--header-y:16px;--header-x:28px;--stats-x:36px;--stats-y:28px;
+    --hero-gap:64px;--copy-max:760px;--lede-max:440px;}
+  .nav-link{padding:0 14px;} .badge{margin-bottom:16px;} .lede{margin-top:14px;} .hero-actions{margin-top:20px;}
+}
+@media (min-width:901px) and (max-height:850px){
+  :root{--header-y:14px;--stats-y:24px;--hero-gap:48px;--h1:40px;}
+  .badge{margin-bottom:12px;} .lede{margin-top:12px;} .hero-actions{margin-top:16px;}
+}
+@media (min-width:901px) and (max-height:720px){
+  :root{--h1:34px;--lede:14px;--hero-gap:32px;--stats-y:18px;--nav-h:30px;--btn-h:34px;--hero-btn-h:36px;}
+  .badge{margin-bottom:8px;}
+}
+/* desktop one-frame lock — no scroll */
+@media (min-width:901px){
+  html,body{height:100%; overflow:hidden;}
+  .page{height:100vh; height:100dvh; overflow:hidden;}
+}
+
+/* ---- phone ---- */
+@media (max-width:900px){
+  html,body{height:auto; overflow-y:auto;}
+  :root{--logo:16px;--btn:15px;--btn-h:46px;--hero-btn-h:48px;--h1:36px;--lede:16.5px;--badge:13.5px;
+    --stat-size:15px;--header-y:16px;--header-x:18px;--stats-x:20px;--stats-y:28px;--hero-gap:36px;}
+  .header{grid-template-columns:1fr auto auto; gap:8px;
+    padding-top:max(var(--header-y), env(safe-area-inset-top));
+    padding-left:max(var(--header-x), env(safe-area-inset-left));
+    padding-right:max(var(--header-x), env(safe-area-inset-right));}
+  .logo, .header-cta, .burger{z-index:80;}
+  .burger{display:grid;}
+  .header-cta{display:none;}
+
+  .menu-backdrop{display:block;}
+  nav#site-nav{
+    position:fixed; inset:0; z-index:45; display:flex; flex-direction:column;
+    align-items:center; justify-content:center; gap:12px; background:transparent;
+    padding:96px 22px 32px; padding-top:max(96px, calc(env(safe-area-inset-top) + 88px));
+    opacity:0; visibility:hidden; transition:opacity .28s ease, visibility .28s ease;
+  }
+  body.menu-open nav#site-nav{opacity:1; visibility:visible;}
+  .nav-link{width:100%; height:56px; justify-content:center; font-size:19px; border-radius:10px;}
+  body.menu-open{overflow:hidden;}
+
+  .hero{padding:20px 20px 64px; align-items:flex-end;}
+  .hero-copy, .lede{max-width:100%;}
+  .stats{flex-direction:column; align-items:center; gap:16px;}
+  .stat{white-space:normal; text-align:center;}
+}
+@media (max-width:560px){
+  :root{--h1:34px;--lede:16px;--header-x:16px;}
+  .hero-actions{flex-direction:column; width:100%;}
+  .hero-actions .btn{width:100%;}
+}
+</style>
+</head>
+<body style="background:#000;color:#fff">
+
+<div class="grain" aria-hidden="true"></div>
+<div class="hero-photo" aria-hidden="true"></div>
+
+<div class="page">
+  <div class="menu-backdrop" aria-hidden="true"></div>
+
+  <!-- ============ header ============ -->
+  <header class="header">
+    <a class="logo appear appear--scale" href="#top" aria-label="Safar.ai" style="--d:.08s">
+      <svg viewBox="0 0 24 24" fill="currentColor" aria-hidden="true">
+        <circle cx="6" cy="18" r="2"/>
+        <circle cx="18" cy="6" r="2"/>
+        <rect x="10.8" y="4" width="2.4" height="16" rx="1.2" transform="rotate(45 12 12)"/>
+      </svg>
+      <span>Safar<span class="logo-suffix">.ai</span></span>
+    </a>
+
+    <nav id="site-nav" aria-label="Primary">
+      <a class="nav-link appear appear--scale" href="#how-it-works" style="--d:.16s">How it works</a>
+      <a class="nav-link appear appear--soft"  href="#agents"       style="--d:.28s">Agents</a>
+      <a class="nav-link appear appear--scale" href="#on-trip"      style="--d:.40s">On-trip</a>
+      <a class="nav-link appear appear--soft"  href="#docs"         style="--d:.52s">Docs</a>
+    </nav>
+
+    <div class="header-right">
+      <a class="btn btn-solid header-cta appear appear--scale" href="#start" style="--d:.34s">Open the app</a>
+      <button class="burger appear appear--scale" type="button" aria-controls="site-nav" aria-expanded="false" aria-label="Open menu" style="--d:.34s">
+        <span class="bars" aria-hidden="true"><span></span><span></span><span></span></span>
+      </button>
+    </div>
+  </header>
+
+  <!-- ============ hero ============ -->
+  <main class="hero" id="top">
+    <div class="hero-copy">
+      <span class="badge appear appear--pop" style="--d:.22s">
+        <svg class="badge-star" viewBox="0 0 24 24" fill="#fff" aria-hidden="true">
+          <path d="M12 2.6C12.55 2.6 12.88 3.15 13.08 4.7c.62 4.7 1.52 5.6 6.22 6.22 1.55.2 2.1.53 2.1 1.08s-.55.88-2.1 1.08c-4.7.62-5.6 1.52-6.22 6.22-.2 1.55-.53 2.1-1.08 2.1s-.88-.55-1.08-2.1c-.62-4.7-1.52-5.6-6.22-6.22C3.15 12.88 2.6 12.55 2.6 12s.55-.88 2.1-1.08c4.7-.62 5.6-1.52 6.22-6.22C11.12 3.15 11.45 2.6 12 2.6Z"/>
+        </svg>
+        Multi-Agent Travel OS
+      </span>
+
+      <h1>
+        <span class="headline-line appear appear--mask" style="--d:.42s">Let <em>AI agents</em> plan your</span>
+        <span class="headline-line appear appear--mask" style="--d:.62s">entire trip in minutes.</span>
+      </h1>
+
+      <p class="lede appear appear--soft" style="--d:.82s">
+        Specialised agents find flights, weigh hotels, watch visas and weather —
+        then negotiate three plans and hand every irreversible call to you.
+      </p>
+
+      <div class="hero-actions">
+        <a class="btn btn-solid appear appear--btn"  href="#start" style="--d:.96s">Plan my trip</a>
+        <a class="btn btn-ghost appear appear--side" href="#demo"  style="--d:1.10s">See it in action</a>
+      </div>
+    </div>
+  </main>
+
+  <!-- ============ stats ============ -->
+  <footer class="stats">
+    <span class="stat appear appear--stat" style="--d:1.12s">
+      <svg viewBox="0 0 24 24" aria-hidden="true">
+        <defs>
+          <linearGradient id="s1a" x1="3" y1="2" x2="14" y2="22" gradientUnits="userSpaceOnUse">
+            <stop offset="0" stop-color="#ffffff" stop-opacity=".38"/><stop offset="1" stop-color="#3a3a3a" stop-opacity=".62"/>
+          </linearGradient>
+          <linearGradient id="s1b" x1="3" y1="2" x2="14" y2="22" gradientUnits="userSpaceOnUse">
+            <stop offset="0" stop-color="#3a3a3a" stop-opacity=".38"/><stop offset="1" stop-color="#ffffff" stop-opacity=".62"/>
+          </linearGradient>
+        </defs>
+        <rect x="3.4" y="2.6" width="7.2" height="18.8" rx="3.6" fill="url(#s1a)"/>
+        <rect x="13.4" y="2.6" width="7.2" height="18.8" rx="3.6" fill="url(#s1b)"/>
+        <rect x="9.2" y="10.9" width="5.6" height="2.2" rx="1.1" fill="#4a4a4a"/>
+      </svg>
+      27 specialised agents
+    </span>
+
+    <span class="stat appear appear--stat" style="--d:1.28s">
+      <svg viewBox="0 0 24 24" aria-hidden="true">
+        <rect x="2.4" y="2.4" width="19.2" height="19.2" rx="6.2" fill="#ffffff"/>
+        <path d="M12 7.1v7.4" stroke="#111" stroke-width="1.85" stroke-linecap="round"/>
+        <path d="M8.15 12.35L12 16.2l3.85-3.85" fill="none" stroke="#111" stroke-width="1.85" stroke-linecap="round" stroke-linejoin="round"/>
+      </svg>
+      3 negotiated plans per trip
+    </span>
+
+    <span class="stat appear appear--stat" style="--d:1.44s">
+      <svg class="stat-icon-wide" viewBox="0 0 40 22" aria-hidden="true">
+        <circle cx="10.2" cy="11" r="9.2" fill="#2b2b2b"/>
+        <ellipse cx="10.2" cy="12.1" rx="4.15" ry="3.7" fill="#f4f4f4"/>
+        <path d="M6.6 8.9l1.7 1.5-2.4.5z" fill="#f4f4f4"/>
+        <path d="M13.8 8.9l-1.7 1.5 2.4.5z" fill="#f4f4f4"/>
+        <circle cx="8.9" cy="12" r=".7" fill="#1a1a1a"/>
+        <circle cx="11.5" cy="12" r=".7" fill="#1a1a1a"/>
+        <circle cx="20.2" cy="11" r="9.2" fill="#ffffff"/>
+        <circle cx="18.5" cy="10.2" r="1.7" fill="#111"/>
+        <circle cx="21.9" cy="10.2" r="1.7" fill="#111"/>
+        <ellipse cx="20.2" cy="13" rx="1.1" ry=".8" fill="#111"/>
+        <path d="M17.6 14.6c1.6 1.4 3.6 1.4 5.2 0" fill="none" stroke="#111" stroke-width="1.2" stroke-linecap="round"/>
+        <circle cx="30.2" cy="11" r="9.2" fill="#f26b1d"/>
+        <text x="30.2" y="15.1" font-family="Inter, sans-serif" font-weight="700" font-size="12.5" text-anchor="middle" fill="#fff">e</text>
+      </svg>
+      Group trips, fairly balanced
+    </span>
+  </footer>
+</div>
+
+<script>
+(function(){
+  "use strict";
+  var body = document.body;
+
+  /* 1. each .appear resolves to .is-in on its own animationend */
+  var appears = document.querySelectorAll(".appear");
+  appears.forEach(function(el){
+    el.addEventListener("animationend", function(){ el.classList.add("is-in"); }, { once:true });
+  });
+  var photo = document.querySelector(".hero-photo");
+  if (photo){ photo.addEventListener("animationend", function(){ photo.classList.add("is-in"); }, { once:true }); }
+
+  /* 2. fallback — if animations never ran, force the resting state */
+  requestAnimationFrame(function(){ requestAnimationFrame(function(){
+    var running = false;
+    var probes = document.querySelectorAll(".appear, .hero-photo");
+    probes.forEach(function(el){
+      if (!el.getAnimations) return;
+      el.getAnimations().forEach(function(a){
+        if (a.playState === "running" || a.playState === "finished") running = true;
+      });
+    });
+    if (!running){ probes.forEach(function(el){ el.classList.add("is-in"); }); }
+  }); });
+
+  /* 3-5. menu */
+  var burger = document.querySelector(".burger");
+  var backdrop = document.querySelector(".menu-backdrop");
+  var navLinks = document.querySelectorAll("#site-nav .nav-link");
+  var mq = window.matchMedia("(min-width: 901px)");
+
+  function setMenu(open){
+    body.classList.toggle("menu-open", open);
+    if (burger){
+      burger.setAttribute("aria-expanded", open ? "true" : "false");
+      burger.setAttribute("aria-label", open ? "Close menu" : "Open menu");
+    }
+  }
+  if (burger){ burger.addEventListener("click", function(){ setMenu(!body.classList.contains("menu-open")); }); }
+  if (backdrop){ backdrop.addEventListener("click", function(){ setMenu(false); }); }
+  navLinks.forEach(function(l){ l.addEventListener("click", function(){ setMenu(false); }); });
+  document.addEventListener("keydown", function(e){ if (e.key === "Escape") setMenu(false); });
+  (mq.addEventListener ? mq.addEventListener.bind(mq,"change") : mq.addListener.bind(mq))(function(e){ if (e.matches) setMenu(false); });
+})();
+</script>
+</body>
+</html>
