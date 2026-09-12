@@ -7,6 +7,12 @@
       "runtimeArgs": ["-m", "streamlit", "run", "app.py", "--server.headless", "true", "--server.port", "8502", "--browser.gatherUsageStats", "false"],
       "port": 8502,
       "autoPort": false
+    },
+    {
+      "name": "landing",
+      "runtimeExecutable": "python",
+      "runtimeArgs": ["-m", "http.server", "8770", "--directory", "landing"],
+      "port": 8770
     }
   ]
 }
